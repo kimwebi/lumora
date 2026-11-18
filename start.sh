@@ -5,10 +5,13 @@ set -e
 
 echo "Starting Lumora..."
 
-echo "Running database migrations..."
+echo "Clearing Laravel caches..."
+php artisan optimize:clear
+
+echo "Running pending database migrations..."
 php artisan migrate --force
 
-echo "Creating admin account..."
+echo "Creating admin account if needed..."
 php artisan db:seed --class=AdminUserSeeder --force
 
 echo "Creating storage link..."
