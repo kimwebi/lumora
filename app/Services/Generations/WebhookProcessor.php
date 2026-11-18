@@ -44,6 +44,16 @@ class WebhookProcessor
         try {
             $generation = $this->findGeneration($payload);
 
+            if (! $generation && $this->isPing($payload)) {
+                $event->forceFill([
+                    'processed' => true,
+                    'ignored' => true,
+                    'error' => null,
+                ])->save();
+
+                return ['outcome' => 'ignored', 'event_id' => $eventId];
+            }
+
             if (! $generation) {
                 $event->forceFill(['error' => 'generation_not_found'])->save();
 
@@ -93,7 +103,7 @@ class WebhookProcessor
             $event->forceFill([
                 'processed' => true,
                 'status' => $status,
-                'error' => $applied ? null : 'not_applied',
+                'error' => $status === 'processing' ? null : ($applied ? null : 'not_applied'),
             ])->save();
 
             return [
@@ -128,6 +138,14 @@ class WebhookProcessor
                 $generation = $this->findGeneration($event->payloadArray());
 
                 if (! $generation) {
+                    if ($this->isPing($event->payloadArray())) {
+                        $event->forceFill([
+                            'processed' => true,
+                            'ignored' => true,
+                            'error' => null,
+                        ])->save();
+                    }
+
                     return;
                 }
 
@@ -150,7 +168,8 @@ class WebhookProcessor
     private function findGeneration(array $payload): ?Generation
     {
         $providerId = $this->finalizer->providerGenerationId($payload);
-        $uuid = Arr::get($payload, 'data.metadata.generation_uuid')
+        $uuid = Arr::get($payload, 'data.object.metadata.generation_uuid')
+            ?? Arr::get($payload, 'data.metadata.generation_uuid')
             ?? Arr::get($payload, 'metadata.generation_uuid')
             ?? Arr::get($payload, 'client_reference_id');
 
@@ -191,7 +210,7 @@ class WebhookProcessor
 
     private function errorCode(array $payload): string
     {
-        foreach (['error.code', 'data.error.code', 'failure_code', 'code'] as $path) {
+        foreach (['data.object.error.code', 'error.code', 'data.error.code', 'failure_code', 'code'] as $path) {
             $value = Arr::get($payload, $path);
             if (is_string($value) && $value !== '') {
                 return $value;
@@ -203,7 +222,7 @@ class WebhookProcessor
 
     private function errorMessage(array $payload): ?string
     {
-        foreach (['error.message', 'data.error.message', 'failure_reason', 'message'] as $path) {
+        foreach (['data.object.error.message', 'error.message', 'data.error.message', 'failure_reason', 'message'] as $path) {
             $value = Arr::get($payload, $path);
             if (is_string($value) && $value !== '') {
                 return $value;
@@ -230,6 +249,13 @@ class WebhookProcessor
         $value = Arr::get($payload, 'type') ?? Arr::get($payload, 'event');
 
         return is_string($value) ? $value : null;
+    }
+
+    private function isPing(array $payload): bool
+    {
+        $type = Str::lower((string) $this->eventType($payload));
+
+        return $type === 'ping' || $type === 'webhook.ping';
     }
 
     private function occurredAt(array $payload): ?Carbon

@@ -311,7 +311,7 @@ const imageCount = computed(() => props.stats?.succeeded ?? 0);
                     >
                         <TriangleAlert class="mt-0.5 h-4 w-4 shrink-0 text-pending" />
                         <p class="text-[11.5px] leading-relaxed text-subtle">
-                            Estimates use your configured rate card until the provider reports real usage.
+                            Estimates follow Pixelforge’s documented token model until the provider reports real usage.
                         </p>
                     </div>
                 </div>

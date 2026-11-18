@@ -155,9 +155,10 @@ class DemoDataSeeder extends Seeder
         GenerationFinalizer $finalizer,
         PricingCalculator $pricing,
     ): Generation {
-        $sizes = ['1024x1024', '1024x1536', '1536x1024', '1536x1536'];
+        $sizes = collect(config('lumora.generation.size_options', []))->pluck('value')->all();
         $size = $sizes[array_rand($sizes)];
-        $quality = ['standard', 'hd'][array_rand(['standard', 'hd'])];
+        $qualities = collect(config('lumora.generation.quality_options', []))->pluck('value')->all();
+        $quality = $qualities[array_rand($qualities)];
         $estimate = $pricing->estimate($size, $quality);
 
         [$width, $height] = array_map('intval', explode('x', $size));
@@ -190,9 +191,10 @@ class DemoDataSeeder extends Seeder
                 'id' => $providerId,
                 'images' => [['url' => $image]],
                 'usage' => [
-                    'input_tokens' => 180,
+                    'input_text_tokens' => 180,
                     'output_tokens' => 120,
-                    'image_tokens' => $quality === 'hd' ? 1200 : 800,
+                    'input_image_tokens' => 0,
+                    'reasoning_tokens' => 350,
                 ],
             ], 'seed', $createdAt->copy()->addSeconds(18));
         } elseif ($status === Generation::STATUS_FAILED) {

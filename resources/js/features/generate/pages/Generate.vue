@@ -102,7 +102,13 @@ const removeReference = (index) => {
     form.reference_images.splice(index, 1);
 };
 
-const estimate = computed(() => estimatePrice(props.pricing, form.size, form.quality));
+const estimate = computed(() => estimatePrice(
+    props.pricing,
+    form.size,
+    form.quality,
+    form.prompt,
+    form.reference_images.filter((url) => typeof url === 'string' && url.trim() !== '').length,
+));
 
 const balance = ref(props.balanceMicros);
 

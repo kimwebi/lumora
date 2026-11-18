@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Generation;
 use App\Models\User;
+use App\Services\Pixelforge\PricingCalculator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -18,7 +19,8 @@ class GenerationFactory extends Factory
     {
         $sizes = config('lumora.generation.size_options', []);
         $size = fake()->randomElement($sizes);
-        $quality = fake()->randomElement(['standard', 'hd']);
+        $quality = fake()->randomElement(collect(config('lumora.generation.quality_options', []))->pluck('value')->all());
+        $estimate = app(PricingCalculator::class)->estimate($size['value'], $quality);
 
         return [
             'uuid' => (string) Str::uuid(),
@@ -31,9 +33,9 @@ class GenerationFactory extends Factory
             'reference_images' => null,
             'status' => Generation::STATUS_PENDING,
             'provider' => 'pixelforge',
-            'estimated_provider_cost_micros' => 20_000,
-            'estimated_user_charge_micros' => 25_000,
-            'markup_basis_points' => 2_500,
+            'estimated_provider_cost_micros' => $estimate->providerMicros,
+            'estimated_user_charge_micros' => $estimate->totalMicros,
+            'markup_basis_points' => $estimate->markupBasisPoints,
         ];
     }
 

@@ -157,11 +157,13 @@ LUMORA_GENERATIONS_AFTER_RESPONSE=false`,
                     ['`LUMORA_STALE_GENERATION_MINUTES`', '`20`', 'Age after which an unfinished render is failed and refunded.'],
                     ['`LUMORA_MAX_POLL_ATTEMPTS`', '`60`', 'Maximum status polls before a render is treated as stale.'],
                     ['`LUMORA_GENERATIONS_AFTER_RESPONSE`', '`false`', 'When true, dispatch the submit job after the response instead of during the request. Useful on hosts without a worker during local debugging.'],
+                    ['`LUMORA_MIRROR_IMAGES`', '`true`', 'Copy each finished render onto the app disk, because signed provider image URLs expire 24 hours after completion.'],
+                    ['`LUMORA_IMAGE_DISK`', '`public`', 'Filesystem disk used for mirrored renders. Run `php artisan storage:link` so `/storage/generations` is publicly served.'],
                 ],
             },
             {
                 type: 'paragraph',
-                text: 'Money and pricing are configured in `config/lumora.php` rather than the environment: the rate card (`pricing.image_rates_micros`), token rates (`pricing.usage_rates_micros_per_million`), credit packages (`credits.packages`) and canvas options (`generation.size_options`). Changing the rate card updates the studio estimate automatically because rates are sent to the page as props.',
+                text: 'Money and pricing are configured in `config/lumora.php` rather than the environment: token rates (`pricing.usage_rates_micros_per_million`), documented output-token estimates (`pricing.output_token_estimates`), reasoning budgets (`pricing.reasoning_token_max`), credit packages (`credits.packages`) and canvas options (`generation.size_options`). Changing rates updates the studio estimate automatically because they are sent to the page as props.',
             },
             {
                 type: 'callout',
@@ -185,14 +187,14 @@ LUMORA_GENERATIONS_AFTER_RESPONSE=false`,
                     { title: 'Clear cached configuration', text: 'Run `php artisan config:clear` locally, or `php artisan config:cache` in production.' },
                     { title: 'Restart workers', text: 'Run `php artisan queue:restart` whenever credentials or configuration change. Long-running workers keep the old config in memory.' },
                     { title: 'Verify the connection', text: 'Open **Generate Image**. The provider badge should report that the studio is connected and the generate button should become available when the other conditions are met.' },
-                    { title: 'Send a real render', text: 'Submit a small Standard render and watch `storage/logs/laravel.log`. The client logs the method, path, status, duration and provider request id for every call.' },
+                    { title: 'Send a real render', text: 'Submit a low quality render and watch `storage/logs/laravel.log`. The client logs the method, path, status, duration and provider request id for every call.' },
                     { title: 'Reconcile usage', text: 'Once real jobs have run, use **Admin Dashboard → Reconcile usage** (or `php artisan lumora:reconcile-usage --days=2`) to pull `GET /v1/usage` and compare provider cost with local settlements.' },
                 ],
             },
             {
                 type: 'code',
                 language: 'dotenv',
-                code: `PIXELFORGE_BASE_URL=https://api.pixelforge.dev
+                code: `PIXELFORGE_BASE_URL=https://pixelforge.promptedit.dev
 PIXELFORGE_API_KEY=your_api_key_here
 PIXELFORGE_WEBHOOK_SECRET=your_webhook_signing_secret
 
@@ -203,7 +205,7 @@ PIXELFORGE_REQUESTS_PER_MINUTE=60
 PIXELFORGE_GENERATIONS_PATH=/v1/generations
 PIXELFORGE_USAGE_PATH=/v1/usage
 
-PIXELFORGE_SIGNATURE_HEADER=X-Pixelforge-Signature
+PIXELFORGE_SIGNATURE_HEADER=Pixelforge-Signature
 PIXELFORGE_TIMESTAMP_HEADER=X-Pixelforge-Timestamp
 PIXELFORGE_SIGNATURE_TOLERANCE=300
 PIXELFORGE_SIGNATURE_SCHEME=timestamped`,
@@ -212,7 +214,7 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped`,
                 type: 'table',
                 head: ['Setting', 'Used for'],
                 rows: [
-                    ['`PIXELFORGE_BASE_URL`', 'Base URL for every API call. Trailing slashes are normalised.'],
+                    ['`PIXELFORGE_BASE_URL`', 'Provider origin only, for example `https://pixelforge.promptedit.dev`. Do not append `/v1`; the paths below already include it. Trailing slashes are normalised.'],
                     ['`PIXELFORGE_API_KEY`', 'Sent as a Bearer token and used to decide whether the studio is enabled.'],
                     ['`PIXELFORGE_WEBHOOK_SECRET`', 'HMAC key for incoming webhook verification.'],
                     ['`PIXELFORGE_GENERATIONS_PATH`', 'Create and fetch generation endpoint. The provider id is appended for polling.'],
@@ -223,7 +225,7 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped`,
             },
             {
                 type: 'paragraph',
-                text: 'The submit job sends a JSON body with `prompt`, `size`, `quality`, `n: 1`, `reference_images` when present, and `metadata.generation_uuid`. It also sends an `Idempotency-Key` of `lumora-generation-{uuid}` so a retried submit cannot create a duplicate render. Both values are stable for the lifetime of the generation.',
+                text: 'The submit job sends a JSON body with `prompt`, `size`, `quality`, `reference_images` when present, and `metadata.generation_uuid`. Sizes are `1024x1024`, `1536x1024` and `1024x1536`; qualities are `low`, `medium` and `high`. Every metadata value is sent as a string because the provider rejects numbers. The provider rejects unknown fields too, so no other parameters are sent. It also sends an `Idempotency-Key` of `lumora-generation-{uuid}` so a retried submit cannot create a duplicate render.',
             },
             {
                 type: 'code',
@@ -231,12 +233,11 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped`,
                 code: `{
   "prompt": "A cinematic still of a glass whale drifting through a violet nebula",
   "size": "1024x1024",
-  "quality": "standard",
-  "n": 1,
+  "quality": "medium",
   "reference_images": ["https://example.com/reference.jpg"],
   "metadata": {
     "generation_uuid": "0d9f...",
-    "lumora_user_id": 42
+    "lumora_user_id": "42"
   }
 }`,
             },
@@ -273,32 +274,37 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped`,
                 type: 'table',
                 head: ['Scheme', 'Signature input', 'Header formats accepted'],
                 rows: [
-                    ['`timestamped` (default)', '`HMAC-SHA256("{timestamp}.{rawBody}")`', 'Raw hex digest or Stripe-style `t=...,v1=...`; timestamp from the configured header.'],
+                    ['`timestamped` (default)', '`HMAC-SHA256("{timestamp}.{rawBody}")`', 'Raw hex digest or Stripe-style `t=...,v1=...`; timestamp from the configured header or any `*timestamp*` header.'],
                     ['`raw`', '`HMAC-SHA256(rawBody)`', 'Raw hex digest; no timestamp is required.'],
                 ],
             },
             {
                 type: 'paragraph',
-                text: 'The verifier rejects missing secrets, missing signatures and timestamps older than `PIXELFORGE_SIGNATURE_TOLERANCE` seconds (300 by default). A failed check returns HTTP 401; malformed JSON returns 400; a processing exception returns 500 so the provider can retry.',
+                text: 'The verifier reads `PIXELFORGE_SIGNATURE_HEADER` first, then any other header whose name contains `sig` (for example `X-Webhook-Signature`), so a provider header rename does not require a code change. When no timestamp accompanies a delivery it verifies the raw body. Missing secrets, missing signatures and timestamps older than `PIXELFORGE_SIGNATURE_TOLERANCE` seconds (300 by default) are rejected. A failed check returns HTTP 401; malformed JSON returns 400; a processing exception returns 500 so the provider can retry.',
+            },
+            {
+                type: 'callout',
+                tone: 'warning',
+                title: 'A 401 means the secret or header does not match',
+                text: 'You never paste a signature anywhere. Pixelforge computes it per delivery from your endpoint signing secret, and Lumora compares it with the same secret. If a delivery fails, open `storage/logs/laravel.log` and read the `Rejected Pixelforge webhook` entry: it lists the configuration, whether a secret is set, which signature headers arrived and every header name received. Then copy the endpoint signing secret from the Pixelforge dashboard into `PIXELFORGE_WEBHOOK_SECRET` and point `PIXELFORGE_SIGNATURE_HEADER` at the header listed there.',
             },
             {
                 type: 'code',
                 language: 'bash',
-                code: `BODY='{"event_id":"evt_test_001","type":"generation.completed","created_at":1730000000,"data":{"id":"gen_provider_id","status":"succeeded","image_url":"https://example.com/result.png","metadata":{"generation_uuid":"YOUR_LUMORA_GENERATION_UUID"},"usage":{"input_tokens":1000,"output_tokens":2000,"image_tokens":3000}}}'
+                code: `BODY='{"id":"evt_test_001","object":"event","type":"generation.succeeded","created_at":"2026-11-18T10:00:00Z","data":{"object":{"id":"gen_provider_id","object":"generation","status":"succeeded","image_url":"https://example.com/result.png","metadata":{"generation_uuid":"YOUR_LUMORA_GENERATION_UUID"},"usage":{"input_text_tokens":100,"input_image_tokens":0,"output_tokens":1100,"reasoning_tokens":200,"total_tokens":1400}}}}'
 TS=$(date +%s)
 SIG=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$PIXELFORGE_WEBHOOK_SECRET" -r | cut -d' ' -f1)
 
 curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
   -H "Content-Type: application/json" \\
-  -H "X-Pixelforge-Timestamp: $TS" \\
-  -H "X-Pixelforge-Signature: t=$TS,v1=$SIG" \\
+  -H "Pixelforge-Signature: t=$TS,v1=$SIG" \\
   --data "$BODY"`,
             },
             {
                 type: 'callout',
                 tone: 'warning',
                 title: 'Use real ids in the test body',
-                text: 'To settle a real render, `data.id` must match the generation’s `provider_generation_id`, or `data.metadata.generation_uuid` must be the Lumora generation UUID. Unknown ids are stored as unmatched events and replayed later by the reconciliation command.',
+                text: 'To settle a real render, `data.object.id` must match the generation’s `provider_generation_id`, or `data.object.metadata.generation_uuid` must be the Lumora generation UUID. Unknown ids are stored as unmatched events and replayed later by the reconciliation command.',
             },
             {
                 type: 'list',
@@ -322,9 +328,9 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
                 items: [
                     { title: 'Validate', text: '`StoreGenerationRequest` trims the prompt, validates length, size, quality and up to two `http(s)` reference URLs.' },
                     { title: 'Estimate and hold', text: '`GenerationService` calculates the provider rate plus markup, checks the balance and active-render limit, then writes a `hold` ledger row and a pending generation inside a transaction.' },
-                    { title: 'Submit', text: '`SubmitGenerationJob` applies a provider rate limit, calls the create endpoint with an idempotency key and records the provider id. Client errors fail the job immediately and refund it; transient errors retry with backoff.' },
+                    { title: 'Submit', text: '`SubmitGenerationJob` applies a provider rate limit, calls the create endpoint with an idempotency key and records the provider id. Client errors fail the job immediately and refund it; transient errors retry with backoff. A `404` on create is treated as transient too, because the provider also returns `not_found` while a resource propagates, and the idempotency key makes the retry safe. When the retries are exhausted the generation is failed and refunded.' },
                     { title: 'Process', text: 'The provider renders asynchronously. The UI polls the status endpoint while the scheduler queues fallback polls for in-progress generations.' },
-                    { title: 'Settle or fail', text: 'A webhook, a poll or a synchronous response calls `GenerationFinalizer`. Success computes actual provider cost, applies markup, settles the difference and stores the image. Failure refunds the full hold and records a zero customer charge.' },
+                    { title: 'Settle or fail', text: 'A webhook, a poll or a synchronous response calls `GenerationFinalizer`. Success computes actual provider cost, applies markup, settles the difference and stores the image. The provider URL is signed and expires after 24 hours, so `MirrorGenerationImage` copies the PNG onto our disk and keeps the original URL in `meta.provider_image_url`. Failure refunds the full hold and records a zero customer charge.' },
                     { title: 'Expire stragglers', text: '`lumora:expire-generations` fails and refunds anything older than the configured stale window, so credits cannot be stuck forever.' },
                 ],
             },
@@ -340,7 +346,7 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
             },
             {
                 type: 'paragraph',
-                text: 'Actual provider cost is resolved in this order: an explicit cost reported by the provider (`cost_usd`, `cost`, `provider_cost_usd` and `data.*` variants); token usage priced with the configured per-million rates; then the size and quality rate card. The customer charge is provider cost plus the configured markup, rounded up.',
+                text: 'Actual provider cost is resolved in this order: an explicit cost reported by the provider (`usage.cost_usd` and variants); token usage priced with the `rates` returned alongside the generation, then the configured per-million rates; then the documented token estimate. Estimated cost uses the same token model with the maximum reasoning budget, so the hold always covers the final charge. The customer charge is provider cost plus the configured markup, rounded up.',
             },
             {
                 type: 'callout',
@@ -539,6 +545,7 @@ npm run build                    # production front-end build`,
                     { title: 'Provision the host', text: 'PHP 8.3+, a MySQL database, HTTPS, and writable `storage/` and `bootstrap/cache/`.' },
                     { title: 'Set production environment values', text: '`APP_ENV=production`, `APP_DEBUG=false`, the real `APP_URL`, a generated `APP_KEY`, database credentials, a real mailer, and Pixelforge credentials. Use your host’s secret manager rather than a committed file.' },
                     { title: 'Install and build', text: 'Run `composer install --no-dev --optimize-autoloader`, `npm ci`, `npm run build` and `php artisan migrate --force`.' },
+                    { title: 'Link public storage', text: 'Run `php artisan storage:link`. Mirrored renders are written to `storage/app/public/generations` and served from `/storage/generations`.' },
                     { title: 'Cache for production', text: 'Run `php artisan config:cache`, `php artisan route:cache` and `php artisan view:cache`.' },
                     { title: 'Run the queue worker', text: '`php artisan queue:work --tries=5 --timeout=120`, supervised by your platform or Supervisor, and restart it on every deploy.' },
                     { title: 'Run the scheduler', text: 'Add the cron entry `* * * * * php /path/to/artisan schedule:run` or keep `php artisan schedule:work` running under supervision.' },

@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class PixelforgeClient
 {
@@ -24,10 +25,8 @@ class PixelforgeClient
     public function usage(string $from, string $to, ?string $cursor = null): array
     {
         $query = array_filter([
-            'start' => $from,
-            'end' => $to,
-            'from' => $from,
-            'to' => $to,
+            'start_date' => $from,
+            'end_date' => $to,
             'cursor' => $cursor,
         ]);
 
@@ -97,12 +96,20 @@ class PixelforgeClient
         Log::info('Pixelforge request', [
             'method' => strtoupper($method),
             'path' => $path,
+            'url' => $url,
             'status' => $response->status(),
             'duration_ms' => $duration,
             'request_id' => $response->header('X-Request-Id'),
         ]);
 
         if ($response->failed()) {
+            Log::warning('Pixelforge request rejected', [
+                'method' => strtoupper($method),
+                'url' => $url,
+                'status' => $response->status(),
+                'body' => Str::limit($response->body(), 500),
+            ]);
+
             throw $this->exceptionFrom($response);
         }
 

@@ -104,7 +104,7 @@ const faqs = [
     {
         question: 'Which image sizes are supported?',
         answer:
-            'Lumora exposes the provider\'s native canvas sizes — square, portrait, landscape, tall and wide — from 512px drafts up to 1792px wide renders, in standard or HD quality.',
+            'Lumora exposes the provider\'s native canvases — square, portrait and landscape — from 1024px up to 1536px wide, in low, medium or high quality.',
     },
     {
         question: 'Can I use the images commercially?',

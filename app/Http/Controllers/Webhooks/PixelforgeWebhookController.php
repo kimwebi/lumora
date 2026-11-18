@@ -16,25 +16,49 @@ class PixelforgeWebhookController extends Controller
     {
         $rawBody = $request->getContent();
 
-        $signatureHeader = $request->header((string) config('lumora.provider.signature.header'));
-        $timestampHeader = $request->header((string) config('lumora.provider.signature.timestamp_header'));
+        $configuredHeader = (string) config('lumora.provider.signature.header');
+        $configuredTimestampHeader = (string) config('lumora.provider.signature.timestamp_header');
 
-        $valid = WebhookSignature::verify(
-            rawBody: $rawBody,
-            signatureHeader: is_array($signatureHeader) ? ($signatureHeader[0] ?? null) : $signatureHeader,
-            timestampHeader: is_array($timestampHeader) ? ($timestampHeader[0] ?? null) : $timestampHeader,
-            secret: config('lumora.provider.webhook_secret'),
-            scheme: (string) config('lumora.provider.signature.scheme', 'timestamped'),
-            toleranceSeconds: (int) config('lumora.provider.signature.tolerance_seconds', 300),
-        );
+        $signatureHeaders = WebhookSignature::candidates($request->headers->all(), $configuredHeader);
+        $timestampHeader = $request->header($configuredTimestampHeader) ?? $this->findTimestampHeader($request);
 
-        if (! $valid) {
+        $matchedHeader = null;
+
+        foreach ($signatureHeaders as $name => $signatureHeader) {
+            $valid = WebhookSignature::verify(
+                rawBody: $rawBody,
+                signatureHeader: $signatureHeader,
+                timestampHeader: is_array($timestampHeader) ? ($timestampHeader[0] ?? null) : $timestampHeader,
+                secret: config('lumora.provider.webhook_secret'),
+                scheme: (string) config('lumora.provider.signature.scheme', 'timestamped'),
+                toleranceSeconds: (int) config('lumora.provider.signature.tolerance_seconds', 300),
+            );
+
+            if ($valid) {
+                $matchedHeader = $name;
+
+                break;
+            }
+        }
+
+        if ($matchedHeader === null) {
             Log::warning('Rejected Pixelforge webhook: invalid signature', [
                 'ip' => $request->ip(),
-                'has_signature' => $signatureHeader !== null,
+                'configured_header' => $configuredHeader,
+                'has_signature' => $signatureHeaders !== [],
+                'signature_headers' => array_keys($signatureHeaders),
+                'header_names' => array_keys($request->headers->all()),
+                'secret_configured' => filled(config('lumora.provider.webhook_secret')),
+                'scheme' => config('lumora.provider.signature.scheme'),
             ]);
 
             return response()->json(['message' => 'Invalid signature.'], 401);
+        }
+
+        if (strcasecmp($matchedHeader, $configuredHeader) !== 0) {
+            Log::info('Pixelforge webhook verified via an alternate signature header', [
+                'header' => $matchedHeader,
+            ]);
         }
 
         $payload = json_decode($rawBody, true);
@@ -44,7 +68,9 @@ class PixelforgeWebhookController extends Controller
         }
 
         $headers = array_filter([
-            'event_id' => $request->header('X-Pixelforge-Event-Id'),
+            'event_id' => $request->header('Pixelforge-Event-Id', $request->header('X-Pixelforge-Event-Id')),
+            'event_type' => $request->header('Pixelforge-Event-Type'),
+            'delivery_attempt' => $request->header('Pixelforge-Delivery-Attempt'),
             'request_id' => $request->header('X-Request-Id'),
             'user_agent' => $request->userAgent(),
             'content_type' => $request->header('Content-Type'),
@@ -61,5 +87,26 @@ class PixelforgeWebhookController extends Controller
         }
 
         return response()->json(['received' => true] + $result);
+    }
+
+    /**
+     * Use the configured timestamp header, or the first header that looks like
+     * a delivery timestamp, so provider header renames do not break replay checks.
+     */
+    private function findTimestampHeader(Request $request): ?string
+    {
+        foreach ($request->headers->all() as $name => $values) {
+            if (! str_contains($name, 'timestamp')) {
+                continue;
+            }
+
+            $value = $values[0] ?? null;
+
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

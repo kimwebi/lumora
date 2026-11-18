@@ -53,7 +53,7 @@ const sections = [
                     },
                     {
                         title: 'Choose a size and quality',
-                        text: 'Pick a canvas shape such as square, portrait or landscape. Start with **Standard** for drafts; switch to **HD** when you want extra detail.',
+                        text: 'Pick a canvas shape such as square, portrait or landscape. Start with **Low** for drafts; switch to **Medium** for everyday work or **High** when you want extra detail.',
                     },
                     {
                         title: 'Add reference images (optional)',
@@ -129,23 +129,19 @@ const sections = [
         blocks: [
             {
                 type: 'table',
-                head: ['Canvas', 'Pixels', 'Ratio', 'Standard', 'HD'],
+                head: ['Canvas', 'Pixels', 'Ratio', 'Low', 'Medium', 'High'],
                 rows: [
-                    ['**Small square**', '512 × 512', '1:1', '~1.25 cr', '~2.5 cr'],
-                    ['**Square**', '768 × 768', '1:1', '~1.88 cr', '~3.75 cr'],
-                    ['**Large square**', '1024 × 1024', '1:1', '~2.5 cr', '~5 cr'],
-                    ['**Portrait**', '1024 × 1536', '2:3', '~3.5 cr', '~7 cr'],
-                    ['**Landscape**', '1536 × 1024', '3:2', '~3.5 cr', '~7 cr'],
-                    ['**XL square**', '1536 × 1536', '1:1', '~4.38 cr', '~8.75 cr'],
-                    ['**Tall**', '1024 × 1792', '4:7', '~3.75 cr', '~7.5 cr'],
-                    ['**Wide**', '1792 × 1024', '7:4', '~3.75 cr', '~7.5 cr'],
+                    ['**Square**', '1024 × 1024', '1:1', '~2.2 cr', '~8.7 cr', '~34 cr'],
+                    ['**Portrait**', '1024 × 1536', '2:3', '~2.9 cr', '~11.4 cr', '~44.8 cr'],
+                    ['**Landscape**', '1536 × 1024', '3:2', '~2.9 cr', '~11.4 cr', '~44.8 cr'],
                 ],
             },
             {
                 type: 'definitions',
                 items: [
-                    { term: 'Standard', text: 'Fast drafts and everyday concepts. Great for exploring ideas and testing prompts.' },
-                    { term: 'HD', text: 'Sharper detail and richer lighting. Use it for portfolio pieces, hero images and final exports.' },
+                    { term: 'Low', text: 'Fast drafts and everyday concepts. Great for exploring ideas and testing prompts.' },
+                    { term: 'Medium', text: 'Balanced detail for most ideas. The default choice for finished social and product images.' },
+                    { term: 'High', text: 'Sharper detail and richer lighting. Use it for portfolio pieces, hero images and final exports.' },
                 ],
             },
             {
@@ -293,9 +289,9 @@ const sections = [
                 rows: [
                     ['The generate button is disabled and mentions the image provider', 'The platform has not connected its Pixelforge credentials yet. Contact the Lumora administrator or support; nothing is wrong with your account.'],
                     ['“You have renders in progress”', 'You can have three active renders at once. Wait for one to finish, or check **My Creations → Processing**.'],
-                    ['“Not enough credits”', 'Top up on **Credits & Billing**, or choose a smaller canvas or Standard quality to lower the estimate.'],
-                    ['A render stays on Processing for a while', 'Larger HD images can take a couple of minutes. Keep the page open or return to it later. Renders that exceed the timeout are failed and refunded automatically.'],
-                    ['A render failed', 'Your credits were returned. Try a simpler prompt, a smaller canvas or Standard quality, then run it again.'],
+                    ['“Not enough credits”', 'Top up on **Credits & Billing**, or choose a smaller canvas or lower quality to reduce the estimate.'],
+                    ['A render stays on Processing for a while', 'High quality images can take a couple of minutes. Keep the page open or return to it later. Renders that exceed the timeout are failed and refunded automatically.'],
+                    ['A render failed', 'Your credits were returned. Try a simpler prompt, a smaller canvas or lower quality, then run it again.'],
                     ['An image will not download', 'Use **Open original** in the detail view and save the image from the browser. On mobile, press and hold the image and choose Save.'],
                     ['I cannot find a creation', 'Check the status filter and search box, then clear both. Deleted creations cannot be restored.'],
                     ['I did not receive welcome credits', 'Refresh the overview page. If the balance is still zero, contact support with the email address you registered with.'],

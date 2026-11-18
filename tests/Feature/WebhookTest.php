@@ -39,7 +39,7 @@ class WebhookTest extends TestCase
         $generation = app(GenerationService::class)->create($user, array_merge([
             'prompt' => 'A quiet lighthouse at dusk',
             'size' => '1024x1024',
-            'quality' => 'standard',
+            'quality' => 'medium',
             'reference_images' => [],
         ], $attributes));
 
@@ -68,15 +68,26 @@ class WebhookTest extends TestCase
     {
         return array_replace_recursive([
             'id' => 'evt_success_1',
+            'object' => 'event',
             'type' => 'generation.succeeded',
-            'status' => 'succeeded',
-            'created_at' => now()->timestamp,
+            'created_at' => now()->toIso8601String(),
             'data' => [
-                'id' => 'gen_123',
-                'metadata' => ['generation_uuid' => $generation->uuid],
-                'images' => [['url' => 'https://cdn.example.com/rendered.png']],
+                'object' => [
+                    'id' => 'gen_123',
+                    'object' => 'generation',
+                    'status' => 'succeeded',
+                    'metadata' => ['generation_uuid' => $generation->uuid],
+                    'image_url' => 'https://cdn.example.com/rendered.png',
+                    'usage' => [
+                        'input_text_tokens' => 10,
+                        'input_image_tokens' => 0,
+                        'output_tokens' => 1_100,
+                        'reasoning_tokens' => 200,
+                        'total_tokens' => 1_310,
+                        'cost_usd' => 0.01,
+                    ],
+                ],
             ],
-            'usage' => ['cost_usd' => 0.01],
         ], $overrides);
     }
 
@@ -104,7 +115,7 @@ class WebhookTest extends TestCase
         $this->assertDatabaseHas('credit_transactions', [
             'generation_id' => $generation->id,
             'type' => CreditTransaction::TYPE_SETTLEMENT,
-            'amount_micros' => 12_500,
+            'amount_micros' => $generation->estimated_user_charge_micros - 12_500,
         ]);
     }
 
@@ -135,14 +146,18 @@ class WebhookTest extends TestCase
 
         $response = $this->signedPost([
             'id' => 'evt_fail_1',
+            'object' => 'event',
             'type' => 'generation.failed',
-            'status' => 'failed',
-            'created_at' => now()->timestamp,
+            'created_at' => now()->toIso8601String(),
             'data' => [
-                'id' => 'gen_123',
-                'metadata' => ['generation_uuid' => $generation->uuid],
+                'object' => [
+                    'id' => 'gen_123',
+                    'object' => 'generation',
+                    'status' => 'failed',
+                    'metadata' => ['generation_uuid' => $generation->uuid],
+                    'error' => ['code' => 'content_policy', 'message' => 'Prompt rejected by the provider.'],
+                ],
             ],
-            'error' => ['code' => 'content_policy', 'message' => 'Prompt rejected by the provider.'],
         ]);
 
         $response->assertOk()->assertJsonPath('status', 'failed');
@@ -157,7 +172,7 @@ class WebhookTest extends TestCase
         $this->assertDatabaseHas('credit_transactions', [
             'generation_id' => $generation->id,
             'type' => CreditTransaction::TYPE_REFUND,
-            'amount_micros' => 25_000,
+            'amount_micros' => $generation->estimated_user_charge_micros,
         ]);
     }
 
@@ -171,12 +186,16 @@ class WebhookTest extends TestCase
 
         $response = $this->signedPost([
             'id' => 'evt_late_fail',
+            'object' => 'event',
             'type' => 'generation.failed',
-            'status' => 'failed',
-            'created_at' => now()->subMinutes(5)->timestamp,
+            'created_at' => now()->subMinutes(5)->toIso8601String(),
             'data' => [
-                'id' => 'gen_123',
-                'metadata' => ['generation_uuid' => $generation->uuid],
+                'object' => [
+                    'id' => 'gen_123',
+                    'object' => 'generation',
+                    'status' => 'failed',
+                    'metadata' => ['generation_uuid' => $generation->uuid],
+                ],
             ],
         ]);
 
@@ -205,7 +224,7 @@ class WebhookTest extends TestCase
         $generation->refresh();
 
         $this->assertSame(Generation::STATUS_PENDING, $generation->status);
-        $this->assertSame(75_000, $user->fresh()->credit_balance_micros);
+        $this->assertSame(100_000 - $generation->estimated_user_charge_micros, $user->fresh()->credit_balance_micros);
         $this->assertSame(0, WebhookEvent::query()->count());
     }
 
@@ -242,12 +261,16 @@ class WebhookTest extends TestCase
     {
         $payload = [
             'id' => 'evt_orphan',
+            'object' => 'event',
             'type' => 'generation.succeeded',
-            'status' => 'succeeded',
-            'created_at' => now()->timestamp,
+            'created_at' => now()->toIso8601String(),
             'data' => [
-                'id' => 'gen_unknown',
-                'metadata' => ['generation_uuid' => '00000000-0000-4000-8000-000000000000'],
+                'object' => [
+                    'id' => 'gen_unknown',
+                    'object' => 'generation',
+                    'status' => 'succeeded',
+                    'metadata' => ['generation_uuid' => '00000000-0000-4000-8000-000000000000'],
+                ],
             ],
         ];
 
@@ -260,6 +283,28 @@ class WebhookTest extends TestCase
         $this->assertFalse($event->processed);
         $this->assertSame('generation_not_found', $event->error);
         $this->assertSame('evt_orphan', $event->provider_event_id);
+    }
+
+    #[Test]
+    public function provider_ping_events_are_acknowledged_without_replay_noise(): void
+    {
+        $payload = [
+            'id' => 'evt_ping_1',
+            'object' => 'event',
+            'type' => 'ping',
+            'created_at' => now()->toIso8601String(),
+            'data' => ['object' => ['object' => 'ping', 'message' => 'Hello from Pixelforge.']],
+        ];
+
+        $this->signedPost($payload)
+            ->assertOk()
+            ->assertJsonPath('outcome', 'ignored');
+
+        $event = WebhookEvent::query()->firstOrFail();
+
+        $this->assertTrue($event->processed);
+        $this->assertTrue($event->ignored);
+        $this->assertNull($event->error);
     }
 
     #[Test]
@@ -289,5 +334,44 @@ class WebhookTest extends TestCase
             ->count());
 
         $this->assertSame(Generation::STATUS_PENDING, $second->fresh()->status);
+    }
+
+    #[Test]
+    public function a_signature_in_a_differently_named_header_settles_the_generation(): void
+    {
+        $user = $this->makeUser();
+        $generation = $this->makeGeneration($user);
+        $payload = $this->successPayload($generation);
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $timestamp = now()->timestamp;
+        $signature = hash_hmac('sha256', $timestamp.'.'.$body, self::SECRET);
+
+        $response = $this->call('POST', '/webhooks/pixelforge', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_WEBHOOK_SIGNATURE' => "t={$timestamp},v1={$signature}",
+        ], $body);
+
+        $response->assertOk()->assertJsonPath('outcome', 'processed');
+        $this->assertSame(Generation::STATUS_SUCCEEDED, $generation->fresh()->status);
+    }
+
+    #[Test]
+    public function a_raw_body_signature_without_a_timestamp_settles_the_generation(): void
+    {
+        $user = $this->makeUser();
+        $generation = $this->makeGeneration($user);
+        $payload = $this->successPayload($generation);
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $signature = hash_hmac('sha256', $body, self::SECRET);
+
+        $response = $this->call('POST', '/webhooks/pixelforge', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_SIGNATURE' => $signature,
+        ], $body);
+
+        $response->assertOk()->assertJsonPath('outcome', 'processed');
+        $this->assertSame(Generation::STATUS_SUCCEEDED, $generation->fresh()->status);
     }
 }

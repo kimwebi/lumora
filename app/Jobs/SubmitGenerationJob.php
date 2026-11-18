@@ -68,10 +68,9 @@ class SubmitGenerationJob implements ShouldBeUnique, ShouldQueue
                 'prompt' => $generation->prompt,
                 'size' => $generation->size,
                 'quality' => $generation->quality,
-                'n' => 1,
                 'metadata' => [
                     'generation_uuid' => $generation->uuid,
-                    'lumora_user_id' => $generation->user_id,
+                    'lumora_user_id' => (string) $generation->user_id,
                 ],
             ];
 
@@ -113,7 +112,7 @@ class SubmitGenerationJob implements ShouldBeUnique, ShouldQueue
                 'message' => $exception->getMessage(),
             ]);
 
-            if ($exception->isClientError()) {
+            if ($exception->isClientError() && ! $exception->isNotFound()) {
                 $finalizer->fail(
                     $generation,
                     $exception->errorCode,
@@ -125,7 +124,9 @@ class SubmitGenerationJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            // Transient failure: let the queue retry with backoff.
+            // Transient failure: let the queue retry with backoff. A not-found is
+            // retried too, because the provider also returns 404 while resources
+            // propagate, and our Idempotency-Key keeps the retry safe.
             throw $exception;
         }
     }

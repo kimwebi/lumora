@@ -10,6 +10,7 @@ export const routes = {
     dashboard: '/dashboard',
     generate: '/generate',
     generations: '/generations',
+    generationsStore: '/generations',
     creations: '/creations',
     billing: '/billing',
     billingPurchase: '/billing/purchase',

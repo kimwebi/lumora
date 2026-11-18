@@ -40,7 +40,12 @@ class GenerationController extends Controller
                 ],
             ],
             'pricing' => [
-                'rates' => config('lumora.pricing.image_rates_micros'),
+                'rates' => config('lumora.pricing.usage_rates_micros_per_million'),
+                'output_tokens' => config('lumora.pricing.output_token_estimates'),
+                'reasoning_tokens' => config('lumora.pricing.reasoning_token_max'),
+                'reference_image_tokens' => (int) config('lumora.pricing.reference_image_tokens'),
+                'characters_per_token' => (int) config('lumora.pricing.characters_per_text_token'),
+                'text_token_uncertainty_basis_points' => (int) config('lumora.pricing.text_token_uncertainty_basis_points'),
                 'fallback_micros' => (int) config('lumora.pricing.fallback_image_micros'),
                 'markup_basis_points' => (int) config('lumora.pricing.markup_basis_points'),
                 'credit_micros' => (int) config('lumora.credits.micros_per_credit'),

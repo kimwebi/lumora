@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Billing\CreditService;
 use App\Services\Generations\GenerationFinalizer;
 use App\Services\Generations\GenerationService;
+use App\Services\Pixelforge\PricingCalculator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -30,7 +31,7 @@ class GenerationFlowTest extends TestCase
         return app(GenerationService::class)->create($user, array_merge([
             'prompt' => 'A quiet lighthouse at dusk, painted in soft oils',
             'size' => '1024x1024',
-            'quality' => 'standard',
+            'quality' => 'medium',
             'reference_images' => [],
         ], $attributes));
     }
@@ -45,27 +46,28 @@ class GenerationFlowTest extends TestCase
         $response = $this->actingAs($user)->post('/generations', [
             'prompt' => '  A quiet lighthouse at dusk  ',
             'size' => '1024x1024',
-            'quality' => 'standard',
+            'quality' => 'medium',
         ]);
 
         $response->assertRedirect(route('generate'));
 
         $generation = Generation::query()->firstOrFail();
+        $estimate = app(PricingCalculator::class)->estimate('1024x1024', 'medium', 1, 'A quiet lighthouse at dusk');
 
         $this->assertSame(Generation::STATUS_PENDING, $generation->status);
         $this->assertSame('A quiet lighthouse at dusk', $generation->prompt);
-        $this->assertSame(20_000, $generation->estimated_provider_cost_micros);
-        $this->assertSame(25_000, $generation->estimated_user_charge_micros);
+        $this->assertSame($estimate->providerMicros, $generation->estimated_provider_cost_micros);
+        $this->assertSame($estimate->totalMicros, $generation->estimated_user_charge_micros);
         $this->assertSame(2_500, $generation->markup_basis_points);
 
-        $this->assertSame(75_000, $user->fresh()->credit_balance_micros);
+        $this->assertSame(100_000 - $estimate->totalMicros, $user->fresh()->credit_balance_micros);
 
         $this->assertDatabaseHas('credit_transactions', [
             'user_id' => $user->id,
             'generation_id' => $generation->id,
             'type' => CreditTransaction::TYPE_HOLD,
-            'amount_micros' => -25_000,
-            'balance_after_micros' => 75_000,
+            'amount_micros' => -$estimate->totalMicros,
+            'balance_after_micros' => 100_000 - $estimate->totalMicros,
         ]);
 
         Queue::assertPushed(SubmitGenerationJob::class);
@@ -81,8 +83,8 @@ class GenerationFlowTest extends TestCase
         foreach (['[fail] a broken render', '[slow] a render that takes its time', '[duplicate] a webhook test'] as $prompt) {
             $this->actingAs($user)->post('/generations', [
                 'prompt' => $prompt,
-                'size' => '512x512',
-                'quality' => 'standard',
+                'size' => '1024x1024',
+                'quality' => 'medium',
             ])->assertRedirect(route('generate'));
         }
 
@@ -134,7 +136,7 @@ class GenerationFlowTest extends TestCase
         $user = $this->makeUser(100_000);
         $generation = $this->makeGeneration($user);
 
-        $this->assertSame(75_000, $user->fresh()->credit_balance_micros);
+        $this->assertSame(100_000 - $generation->estimated_user_charge_micros, $user->fresh()->credit_balance_micros);
 
         $applied = app(GenerationFinalizer::class)->fail(
             $generation,
@@ -156,7 +158,7 @@ class GenerationFlowTest extends TestCase
         $this->assertDatabaseHas('credit_transactions', [
             'generation_id' => $generation->id,
             'type' => CreditTransaction::TYPE_REFUND,
-            'amount_micros' => 25_000,
+            'amount_micros' => $generation->estimated_user_charge_micros,
         ]);
     }
 
@@ -249,7 +251,7 @@ class GenerationFlowTest extends TestCase
 
         $this->assertFalse($applied);
         $this->assertSame(Generation::STATUS_PENDING, $generation->fresh()->status);
-        $this->assertSame(75_000, $user->fresh()->credit_balance_micros);
+        $this->assertSame(100_000 - $generation->estimated_user_charge_micros, $user->fresh()->credit_balance_micros);
     }
 
     #[Test]

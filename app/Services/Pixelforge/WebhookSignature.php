@@ -31,30 +31,70 @@ class WebhookSignature
             return false;
         }
 
-        $signingInput = $scheme === 'raw'
-            ? $rawBody
-            : ($timestamp !== null ? $timestamp.'.'.$rawBody : $rawBody);
-
-        if ($scheme !== 'raw') {
-            if ($timestamp === null) {
-                return false;
-            }
-
+        if ($scheme !== 'raw' && $timestamp !== null) {
             $skew = abs(($now ?? time()) - (int) $timestamp);
+
             if ($toleranceSeconds > 0 && $skew > $toleranceSeconds) {
                 return false;
             }
         }
 
-        $expected = hash_hmac('sha256', $signingInput, $secret);
+        /*
+         * Try every signing input the documented styles allow:
+         *  - "{timestamp}.{rawBody}" for timestamped deliveries
+         *  - "{rawBody}" for raw deliveries, and for providers that send a
+         *    plain signature without a timestamp header.
+         */
+        $signingInputs = [$rawBody];
 
-        foreach ($signatures as $signature) {
-            if (hash_equals($expected, $signature)) {
-                return true;
+        if ($scheme !== 'raw' && $timestamp !== null) {
+            $signingInputs[] = $timestamp.'.'.$rawBody;
+        }
+
+        foreach (array_unique($signingInputs) as $signingInput) {
+            $expected = hash_hmac('sha256', $signingInput, $secret);
+
+            foreach ($signatures as $signature) {
+                if (hash_equals($expected, $signature)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Resolve the signature header, falling back to any other signature-like
+     * header so deployments survive provider header naming changes.
+     *
+     * @param  array<string, array<int, string|null>>  $headers  Lowercase header bag.
+     * @return array<string, string> Header name to raw value, configured header first.
+     */
+    public static function candidates(array $headers, string $configuredHeader): array
+    {
+        $configured = strtolower($configuredHeader);
+        $candidates = [];
+
+        foreach ($headers as $name => $values) {
+            $value = is_array($values) ? ($values[0] ?? null) : $values;
+
+            if (! is_string($value) || trim($value) === '') {
+                continue;
+            }
+
+            if ($name !== $configured && ! str_contains($name, 'sig')) {
+                continue;
+            }
+
+            $candidates[$name] = $value;
+        }
+
+        if (isset($candidates[$configured])) {
+            $candidates = [$configured => $candidates[$configured]] + $candidates;
+        }
+
+        return $candidates;
     }
 
     /**

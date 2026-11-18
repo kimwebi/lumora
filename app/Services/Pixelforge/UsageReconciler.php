@@ -25,8 +25,8 @@ class UsageReconciler
     public function sync(CarbonInterface $from, CarbonInterface $to): array
     {
         $response = $this->client->usage(
-            $from->toIso8601String(),
-            $to->toIso8601String(),
+            $from->toDateString(),
+            $to->toDateString(),
         );
 
         $records = $this->recordsFrom($response);
@@ -66,10 +66,14 @@ class UsageReconciler
                 : $this->pricing->actualProviderCostMicros(
                     ['usage' => $record['usage'] ?? $record],
                     $generation?->size ?? '1024x1024',
-                    $generation?->quality ?? 'standard',
+                    $generation?->quality ?? 'medium',
                 );
 
-            $occurredAt = $record['created_at'] ?? $record['occurred_at'] ?? $record['timestamp'] ?? null;
+            $occurredAt = $record['date']
+                ?? $record['created_at']
+                ?? $record['occurred_at']
+                ?? $record['timestamp']
+                ?? null;
 
             $usageId = (string) (
                 Arr::get($record, 'id')
@@ -82,9 +86,9 @@ class UsageReconciler
                 [
                     'provider_generation_id' => $providerId,
                     'generation_id' => $generation?->id,
-                    'input_tokens' => (int) ($usage['input_tokens'] ?? $usage['prompt_tokens'] ?? 0),
+                    'input_tokens' => (int) ($usage['input_text_tokens'] ?? $usage['input_tokens'] ?? $usage['prompt_tokens'] ?? 0),
                     'output_tokens' => (int) ($usage['output_tokens'] ?? $usage['completion_tokens'] ?? 0),
-                    'image_tokens' => (int) ($usage['image_tokens'] ?? 0),
+                    'image_tokens' => (int) ($usage['input_image_tokens'] ?? $usage['image_tokens'] ?? 0),
                     'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
                     'provider_cost_micros' => $providerMicros,
                     'occurred_at' => $occurredAt,

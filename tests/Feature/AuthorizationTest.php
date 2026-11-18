@@ -20,6 +20,8 @@ class AuthorizationTest extends TestCase
         $generation = Generation::factory()->create(array_merge([
             'user_id' => $user->id,
             'status' => Generation::STATUS_PENDING,
+            'estimated_provider_cost_micros' => 20_000,
+            'estimated_user_charge_micros' => 25_000,
         ], $attributes));
 
         app(CreditService::class)->holdForGeneration(
@@ -114,8 +116,8 @@ class AuthorizationTest extends TestCase
         $this->actingAs($user)
             ->post('/generations', [
                 'prompt' => 'A glass forest under violet moonlight',
-                'size' => '768x768',
-                'quality' => 'hd',
+                'size' => '1024x1024',
+                'quality' => 'medium',
             ])
             ->assertRedirect(route('generate'));
 

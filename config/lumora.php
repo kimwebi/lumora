@@ -79,24 +79,28 @@ return [
         'stale_after_minutes' => (int) env('LUMORA_STALE_GENERATION_MINUTES', 20),
         'after_response' => (bool) env('LUMORA_GENERATIONS_AFTER_RESPONSE', false),
 
+        // Pixelforge accepts exactly these three canvases.
         'size_options' => [
-            ['value' => '512x512', 'width' => 512, 'height' => 512, 'label' => 'Small square', 'ratio' => '1:1'],
-            ['value' => '768x768', 'width' => 768, 'height' => 768, 'label' => 'Square', 'ratio' => '1:1'],
-            ['value' => '1024x1024', 'width' => 1024, 'height' => 1024, 'label' => 'Large square', 'ratio' => '1:1'],
+            ['value' => '1024x1024', 'width' => 1024, 'height' => 1024, 'label' => 'Square', 'ratio' => '1:1'],
             ['value' => '1024x1536', 'width' => 1024, 'height' => 1536, 'label' => 'Portrait', 'ratio' => '2:3'],
             ['value' => '1536x1024', 'width' => 1536, 'height' => 1024, 'label' => 'Landscape', 'ratio' => '3:2'],
-            ['value' => '1536x1536', 'width' => 1536, 'height' => 1536, 'label' => 'XL square', 'ratio' => '1:1'],
-            ['value' => '1024x1792', 'width' => 1024, 'height' => 1792, 'label' => 'Tall', 'ratio' => '4:7'],
-            ['value' => '1792x1024', 'width' => 1792, 'height' => 1024, 'label' => 'Wide', 'ratio' => '7:4'],
         ],
 
+        // Pixelforge quality values are low, medium and high.
         'quality_options' => [
-            ['value' => 'standard', 'label' => 'Standard', 'description' => 'Fast drafts and everyday concepts.'],
-            ['value' => 'hd', 'label' => 'HD', 'description' => 'Sharper detail and richer lighting.'],
+            ['value' => 'low', 'label' => 'Low', 'description' => 'Fast drafts and everyday concepts.'],
+            ['value' => 'medium', 'label' => 'Medium', 'description' => 'Balanced detail for most ideas.'],
+            ['value' => 'high', 'label' => 'High', 'description' => 'Sharper detail and richer lighting.'],
         ],
 
         'default_size' => '1024x1024',
-        'default_quality' => 'standard',
+        'default_quality' => 'medium',
+
+        // Provider image URLs expire 24 hours after completion, so finished
+        // renders are copied onto our own disk.
+        'mirror_images' => (bool) env('LUMORA_MIRROR_IMAGES', true),
+        'image_disk' => env('LUMORA_IMAGE_DISK', 'public'),
+        'image_max_bytes' => 15 * 1024 * 1024,
     ],
 
     /*
@@ -112,7 +116,7 @@ return [
 
     'provider' => [
         'name' => 'pixelforge',
-        'base_url' => env('PIXELFORGE_BASE_URL', 'https://api.pixelforge.dev'),
+        'base_url' => env('PIXELFORGE_BASE_URL', 'https://pixelforge.promptedit.dev'),
         'api_key' => env('PIXELFORGE_API_KEY'),
         'webhook_secret' => env('PIXELFORGE_WEBHOOK_SECRET'),
         'timeout' => (int) env('PIXELFORGE_TIMEOUT', 30),
@@ -125,10 +129,11 @@ return [
         ],
 
         'signature' => [
-            'header' => env('PIXELFORGE_SIGNATURE_HEADER', 'X-Pixelforge-Signature'),
+            'header' => env('PIXELFORGE_SIGNATURE_HEADER', 'Pixelforge-Signature'),
             'timestamp_header' => env('PIXELFORGE_TIMESTAMP_HEADER', 'X-Pixelforge-Timestamp'),
             'tolerance_seconds' => (int) env('PIXELFORGE_SIGNATURE_TOLERANCE', 300),
             // "timestamped" signs "{timestamp}.{rawBody}", "raw" signs the raw body.
+            // Other signature-like headers and raw-body signatures are accepted as a fallback.
             'scheme' => env('PIXELFORGE_SIGNATURE_SCHEME', 'timestamped'),
         ],
     ],
@@ -138,33 +143,40 @@ return [
     | Pricing (provider rates, in micro-dollars)
     |--------------------------------------------------------------------------
     |
-    | Estimated provider cost uses the per-image rate card below. Actual
-    | provider cost is derived from reported token usage where available and
-    | falls back to the rate card. A 25% markup is applied to both.
+    | Pixelforge bills per token. Estimated provider cost follows the token
+    | model documented by the provider, using the maximum reasoning budget so
+    | the hold is always enough. Actual cost uses the rates returned with the
+    | generation, then these rates, then a flat fallback. A 25% markup is
+    | applied to both.
     |
     */
 
     'pricing' => [
         'markup_basis_points' => (int) env('LUMORA_MARKUP_BASIS_POINTS', 2_500),
 
-        'image_rates_micros' => [
-            '512x512' => ['standard' => 10_000, 'hd' => 20_000],
-            '768x768' => ['standard' => 15_000, 'hd' => 30_000],
-            '1024x1024' => ['standard' => 20_000, 'hd' => 40_000],
-            '1024x1536' => ['standard' => 28_000, 'hd' => 56_000],
-            '1536x1024' => ['standard' => 28_000, 'hd' => 56_000],
-            '1536x1536' => ['standard' => 35_000, 'hd' => 70_000],
-            '1024x1792' => ['standard' => 30_000, 'hd' => 60_000],
-            '1792x1024' => ['standard' => 30_000, 'hd' => 60_000],
+        // $5.00, $10.00, $40.00 and $12.50 per million tokens.
+        'usage_rates_micros_per_million' => [
+            'input_text_tokens' => 5_000_000,
+            'input_image_tokens' => 10_000_000,
+            'output_tokens' => 40_000_000,
+            'reasoning_tokens' => 12_500_000,
         ],
+
+        'characters_per_text_token' => 4,
+        'text_token_uncertainty_basis_points' => 1_500,
+        'reference_image_tokens' => 765,
+
+        // Exact output tokens by quality and size.
+        'output_token_estimates' => [
+            'low' => ['1024x1024' => 280, '1536x1024' => 420, '1024x1536' => 420],
+            'medium' => ['1024x1024' => 1_100, '1536x1024' => 1_650, '1024x1536' => 1_650],
+            'high' => ['1024x1024' => 4_300, '1536x1024' => 6_450, '1024x1536' => 6_450],
+        ],
+
+        // Reasoning is variable, so the estimate assumes the maximum.
+        'reasoning_token_max' => ['low' => 500, 'medium' => 2_000, 'high' => 8_000],
 
         'fallback_image_micros' => 20_000,
-
-        'usage_rates_micros_per_million' => [
-            'input_tokens' => 500_000,
-            'output_tokens' => 10_000_000,
-            'image_tokens' => 30_000_000,
-        ],
     ],
 
 ];

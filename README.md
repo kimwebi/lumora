@@ -8,7 +8,7 @@ Lumora is a production-shaped AI image generation studio built with Laravel, Vue
 
 ## Highlights
 
-- **Studio** — prompt, Pixelforge canvas sizes, standard/HD quality, reference image URLs, and a live price estimate showing provider cost, the 25% markup and the exact customer charge before a credit is held.
+- **Studio** - prompt, Pixelforge canvas sizes, low/medium/high quality, reference image URLs, and a live price estimate showing provider cost, the 25% markup and the exact customer charge before a credit is held.
 - **Asynchronous rendering** — a queued submit job, HMAC-verified webhooks, polling fallback, stale-generation expiry and rate limiting. Failed renders are refunded automatically.
 - **Integer money only** — all amounts are stored as micro-dollars (1 USD = 1,000,000 micros). One credit is $0.01. Estimated and actual costs are stored separately.
 - **Exactly-once wallet** — every movement is an append-only ledger row. A unique `(generation_id, type)` index plus row locking guarantees a generation can never be charged or refunded twice.
@@ -80,7 +80,7 @@ The demo data includes 20 succeeded generations, one failed generation and a pen
 The integration is configurable because the final Pixelforge specification and credentials are supplied per environment. Every path, header name and signature format lives in `config/lumora.php` and can be overridden from `.env`:
 
 ```dotenv
-PIXELFORGE_BASE_URL=https://api.pixelforge.dev
+PIXELFORGE_BASE_URL=https://pixelforge.promptedit.dev
 PIXELFORGE_API_KEY=
 PIXELFORGE_WEBHOOK_SECRET=
 PIXELFORGE_TIMEOUT=30
@@ -88,7 +88,7 @@ PIXELFORGE_CONNECT_TIMEOUT=10
 PIXELFORGE_REQUESTS_PER_MINUTE=60
 PIXELFORGE_GENERATIONS_PATH=/v1/generations
 PIXELFORGE_USAGE_PATH=/v1/usage
-PIXELFORGE_SIGNATURE_HEADER=X-Pixelforge-Signature
+PIXELFORGE_SIGNATURE_HEADER=Pixelforge-Signature
 PIXELFORGE_TIMESTAMP_HEADER=X-Pixelforge-Timestamp
 PIXELFORGE_SIGNATURE_TOLERANCE=300
 PIXELFORGE_SIGNATURE_SCHEME=timestamped
@@ -96,7 +96,7 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped
 
 ### Request flow
 
-1. `POST /v1/generations` with the prompt, size, quality, `n = 1`, reference images and `metadata.generation_uuid`.
+1. `POST /v1/generations` with the prompt, size, quality, reference images and `metadata.generation_uuid`.
 2. An `Idempotency-Key` of `lumora-generation-{uuid}` is sent so retries are safe.
 3. Webhooks are received at `POST /webhooks/pixelforge`. The signature is checked against the raw body:
    - `timestamped` (default): `HMAC-SHA256("{timestamp}.{rawBody}")`, accepting a plain hex digest or a Stripe-style `t=...,v1=...` header.
@@ -107,15 +107,18 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped
 
 ### Event shapes
 
-The processor accepts the common variants rather than assuming one exact payload: generation IDs under `id`, `generation_id`, `data.id` or `data.generation_id`; status under `status`, `data.status` or `generation.status`; image URLs under `data.images[].url`, `data.image_url`, `data.output[].url`, `output[].url`, `image_url` or `url`; usage under `usage` or `data.usage`; explicit costs under `cost_usd`, `cost`, `provider_cost_usd` and their `data.*` equivalents.
+Webhook deliveries use `{"id":"evt_...","type":"generation.succeeded","data":{"object":{"id":"gen_...","status":"succeeded","image_url":"...","usage":{...},"metadata":{"generation_uuid":"..."}}}}`. The processor reads the generation from `data.object` (a webhook's top-level `id` is the event id) and still accepts older variants such as `id` or `data.id` for the generation, `status`/`data.status` for the state, `images[].url`/`output[].url` for the image, and `usage`/`data.usage` for tokens.
 
 Actual provider cost resolution order:
 
 1. Explicit reported cost (if present).
-2. Token usage priced with the configured per-million rates.
-3. The size/quality rate card.
+2. Token usage priced with the `rates` returned alongside the generation.
+3. Token usage priced with the configured per-million rates.
+4. The documented token estimate for the requested size and quality.
 
 The customer charge is always provider cost plus the configured markup (default `2500` basis points = 25%), rounded up.
+
+Because signed provider image URLs stop working 24 hours after completion, `MirrorGenerationImage` copies each finished render onto `LUMORA_IMAGE_DISK` (the `public` disk by default) and stores the original URL in `meta.provider_image_url`. Run `php artisan storage:link` so `/storage/generations` is served.
 
 > **Before going live:** compare `PIXELFORGE_*` values against the official Pixelforge documentation and credentials you receive. If the provider uses a different path, header or signature scheme, change the environment values only — no code changes are required.
 
@@ -166,6 +169,7 @@ Lumora needs a standard PHP host with a persistent database and a queue worker. 
    ```bash
    composer install --no-dev --optimize-autoloader
    php artisan migrate --force
+   php artisan storage:link
    php artisan config:cache
    php artisan route:cache
    php artisan view:cache

@@ -26,7 +26,7 @@ class GenerationService
         $quality = (string) $data['quality'];
         $references = array_values(array_filter($data['reference_images'] ?? []));
 
-        $estimate = $this->pricing->estimate($size, $quality);
+        $estimate = $this->pricing->estimate($size, $quality, 1, (string) $data['prompt'], count($references));
 
         $active = $user->generations()->processing()->count();
 

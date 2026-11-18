@@ -2,6 +2,7 @@
 
 namespace App\Services\Generations;
 
+use App\Jobs\MirrorGenerationImage;
 use App\Models\Generation;
 use App\Services\Billing\CreditService;
 use App\Services\Pixelforge\PricingCalculator;
@@ -10,6 +11,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Single, idempotent place where a generation reaches a terminal state and the
@@ -63,6 +65,10 @@ class GenerationFinalizer
                 ]),
             ])->save();
 
+            if (config('lumora.generation.mirror_images', true)) {
+                MirrorGenerationImage::dispatch($locked->id)->afterCommit();
+            }
+
             Log::info('Generation settled successfully', [
                 'generation' => $locked->uuid,
                 'source' => $source,
@@ -100,6 +106,13 @@ class GenerationFinalizer
                 $locked->quality,
             );
 
+            $meta = array_merge($locked->meta ?? [], ['failure_source' => $source]);
+            $providerError = $this->providerError($payload);
+
+            if ($providerError !== null) {
+                $meta['provider_error'] = $providerError;
+            }
+
             $locked->forceFill([
                 'status' => Generation::STATUS_FAILED,
                 'provider_status' => (string) ($this->providerStatus($payload) ?? 'failed'),
@@ -113,7 +126,7 @@ class GenerationFinalizer
                 'settled_at' => now(),
                 'last_provider_event_at' => $occurredAt ?? now(),
                 'provider_generation_id' => $locked->provider_generation_id ?? $this->providerGenerationId($payload),
-                'meta' => array_merge($locked->meta ?? [], ['failure_source' => $source]),
+                'meta' => $meta,
             ])->save();
 
             Log::info('Generation failed and credits refunded', [
@@ -161,6 +174,11 @@ class GenerationFinalizer
     public function imageUrl(array $payload): ?string
     {
         $candidates = [
+            'data.object.image_url',
+            'data.object.images.0.url',
+            'data.object.images.0',
+            'data.object.output.0.url',
+            'data.object.output.0',
             'data.images.0.url',
             'data.images.0',
             'images.0.url',
@@ -189,7 +207,9 @@ class GenerationFinalizer
 
     public function providerGenerationId(array $payload): ?string
     {
-        foreach (['id', 'generation_id', 'data.id', 'data.generation_id', 'generation.id'] as $path) {
+        // A webhook's top-level id is the event id, so the generation object
+        // inside data.object must win. A polled generation is top-level.
+        foreach (['generation.id', 'data.object.id', 'data.generation.id', 'data.id', 'generation_id', 'data.generation_id', 'id'] as $path) {
             $value = Arr::get($payload, $path);
 
             if (is_string($value) && $value !== '') {
@@ -202,7 +222,7 @@ class GenerationFinalizer
 
     public function providerStatus(array $payload): ?string
     {
-        foreach (['status', 'data.status', 'generation.status'] as $path) {
+        foreach (['data.object.status', 'data.status', 'status', 'generation.status'] as $path) {
             $value = Arr::get($payload, $path);
 
             if (is_string($value) && $value !== '') {
@@ -216,5 +236,33 @@ class GenerationFinalizer
     private function hasUsage(array $payload): bool
     {
         return $this->pricing->usageFrom($payload) !== [];
+    }
+
+    /**
+     * @return array{code: string|null, message: string|null}|null
+     */
+    private function providerError(array $payload): ?array
+    {
+        $error = Arr::get($payload, 'error') ?? Arr::get($payload, 'data.object.error');
+
+        if (is_string($error)) {
+            return ['code' => null, 'message' => Str::limit($error, 500)];
+        }
+
+        if (! is_array($error)) {
+            return null;
+        }
+
+        $code = $error['code'] ?? null;
+        $message = $error['message'] ?? null;
+
+        if (! is_string($code) && ! is_string($message)) {
+            return null;
+        }
+
+        return [
+            'code' => is_string($code) ? Str::limit($code, 100) : null,
+            'message' => is_string($message) ? Str::limit($message, 500) : null,
+        ];
     }
 }

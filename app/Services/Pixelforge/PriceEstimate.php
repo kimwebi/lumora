@@ -13,7 +13,7 @@ final readonly class PriceEstimate
         public int $markupBasisPoints,
         public int $images = 1,
         public string $size = '1024x1024',
-        public string $quality = 'standard',
+        public string $quality = 'medium',
     ) {}
 
     public function toArray(): array
