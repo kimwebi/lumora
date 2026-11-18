@@ -83,45 +83,42 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 use Illuminate\Support\Facades\Storage;
 use App\Models\Generation;
 
+
 Route::get('/admin/storage-check', function () {
     abort_unless(auth()->check() && auth()->user()->is_admin, 403);
 
-    $generations = Generation::where('user_id', auth()->id())
-        ->latest()
-        ->take(10)
-        ->get();
-
     return response()->json([
-        'total_generations' => Generation::where(
-            'user_id',
-            auth()->id()
-        )->count(),
+        'database_connection' => config('database.default'),
+        'database_driver' => config('database.connections.'.config('database.default').'.driver'),
 
-        'filesystem_disk' => config('filesystems.default'),
+        'database_name' => \Illuminate\Support\Facades\DB::connection()->getDatabaseName(),
 
-        'storage' => [
-            'public_root' => storage_path('app/public'),
-            'public_directory_exists' => is_dir(storage_path('app/public')),
-            'storage_link_exists' => file_exists(public_path('storage')),
+        'logged_in_user' => [
+            'id' => auth()->id(),
+            'email' => auth()->user()->email,
         ],
 
-        'generations' => $generations->map(function ($generation) {
-            $imageUrl = $generation->image_url;
-            $thumbnailUrl = $generation->thumbnail_url;
+        'generation_counts' => [
+            'all_records' => \App\Models\Generation::withTrashed()->count(),
+            'active_records' => \App\Models\Generation::count(),
+            'soft_deleted_records' => \App\Models\Generation::onlyTrashed()->count(),
+        ],
 
-            return [
-                'uuid' => $generation->uuid,
-                'status' => $generation->status,
-                'image_url' => $imageUrl,
-                'thumbnail_url' => $thumbnailUrl,
-                'image_exists' => $imageUrl
-                    ? Storage::disk('public')->exists($imageUrl)
-                    : false,
-                'thumbnail_exists' => $thumbnailUrl
-                    ? Storage::disk('public')->exists($thumbnailUrl)
-                    : false,
-            ];
-        }),
+        'generations_by_user' => \App\Models\Generation::withTrashed()
+            ->selectRaw('user_id, COUNT(*) as total')
+            ->groupBy('user_id')
+            ->get(),
+
+        'recent_generations' => \App\Models\Generation::withTrashed()
+            ->latest()
+            ->take(10)
+            ->get([
+                'uuid',
+                'user_id',
+                'status',
+                'image_url',
+                'thumbnail_url',
+                'deleted_at',
+            ]),
     ]);
 })->middleware('auth');
-
