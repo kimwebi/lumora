@@ -94,4 +94,8 @@ RUN mkdir -p storage/framework/cache \
 # Render will route traffic to port 10000
 EXPOSE 10000
 
-CMD ["apache2-foreground"]
+COPY start.sh /usr/local/bin/start.sh
+
+RUN chmod +x /usr/local/bin/start.sh
+
+CMD ["/usr/local/bin/start.sh"]
