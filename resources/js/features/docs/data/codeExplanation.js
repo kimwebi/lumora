@@ -238,6 +238,16 @@ export const sections = {
                     ],
                 },
                 {
+                    path: 'app/Http/Controllers/Admin/AdminReportController.php',
+                    lineCount: 65,
+                    role: 'Operator report page, provider usage sync for the selected range, and PDF/XLSX/PNG exports.',
+                    details: [
+                        '`index()` builds the report for `?days=7|14|30|90` and passes `providerReady`.',
+                        '`sync()` normalises the range and calls `UsageReconciler` for the same dates the page shows.',
+                        '`export()` streams the shared report payload with `attachment` and `private, no-store` caching.',
+                    ],
+                },
+                {
                     path: 'app/Http/Controllers/DocumentationController.php',
                     lineCount: 15,
                     role: 'Renders the public User Guide and Developer Guide Inertia pages.',
@@ -467,10 +477,11 @@ export const sections = {
                 },
                 {
                     path: 'app/Services/Pixelforge/UsageReconciler.php',
-                    lineCount: 128,
+                    lineCount: 151,
                     role: 'Pulls `GET /v1/usage` for a date window, upserts local usage rows and links them to generations.',
                     details: [
                         'Handles several response envelopes (`data`, `usage`, `items`, a bare list) and idempotent upserts by provider usage id.',
+                        'Daily aggregates have no id, so they are keyed by date; older hashed rows for the same day are collapsed into one.',
                         'Returns fetched/stored/provider micros/missing-generation counts for the command and admin UI.',
                     ],
                 },
@@ -509,6 +520,35 @@ export const sections = {
                         'Per-user breakdown is a left join over settled generations, top 10 by charge.',
                         'Reconciliation compares summed `provider_usage_records` with generation provider costs and reports variance + last sync.',
                     ],
+                },
+                {
+                    path: 'app/Services/Admin/AdminReportService.php',
+                    lineCount: 265,
+                    role: 'Shared operator-report builder used by the page and all three downloads.',
+                    details: [
+                        'Returns range metadata, totals, reconciliation, daily rows and every user with activity.',
+                        'Customer charge and local provider cost come from settled generations, including trashed rows.',
+                        'Provider API cost is grouped from `provider_usage_records` by date; per-user API cost is allocated from each day’s pool by the user’s share of that day’s local provider cost, so user rows add up to the daily total.',
+                        'Missing provider usage yields `null` totals and variance so the UI says “Not synced” instead of showing a false zero.',
+                    ],
+                },
+                {
+                    path: 'app/Services/Admin/Reports/ReportPdf.php',
+                    lineCount: 420,
+                    role: 'Dependency-free landscape PDF with summary, daily and per-user tables, page breaks and a footer.',
+                    details: ['Base-14 Helvetica only; sanitises em dashes and middots to WinAnsi.'],
+                },
+                {
+                    path: 'app/Services/Admin/Reports/ReportXlsx.php',
+                    lineCount: 391,
+                    role: 'Dependency-free OOXML workbook with Summary, Daily and Users sheets.',
+                    details: ['Uses PHP `ZipArchive`; the three sheet parts are hardcoded in `[Content_Types].xml`.'],
+                },
+                {
+                    path: 'app/Services/Admin/Reports/ReportPng.php',
+                    lineCount: 462,
+                    role: 'GD-rendered report image with summary cards, reconciliation banner and both tables.',
+                    details: ['Uses `resources/fonts/Outfit-Variable.ttf`; caps height at 9000px and points to PDF/Excel when users are truncated.'],
                 },
             ],
         },
@@ -737,7 +777,7 @@ export const sections = {
                 { path: 'resources/js/components/brand/GenerationCard.vue', lineCount: 70, role: 'Gallery tile: contained image (never cropped), full prompt, status and cost below the image so nothing covers the render.' },
                 { path: 'resources/js/components/brand/GenerationDetailModal.vue', lineCount: 230, role: 'Full detail: contained image, prompt copy, dimensions, timeline, estimate vs actual cost breakdown, real file download, delete and provider/failure errors.' },
                 { path: 'resources/js/components/brand/CostBreakdown.vue', lineCount: 37, role: 'Rows for provider cost, markup and customer total; used in studio and detail modal.' },
-                { path: 'resources/js/components/brand/SmartImage.vue', lineCount: 60, role: 'Lazy image with three states: loaded, animated rendering placeholder, and no-preview fallback; `fit="contain"` keeps the whole render visible.' },
+                { path: 'resources/js/components/brand/SmartImage.vue', lineCount: 55, role: 'Lazy image with three states: loaded, animated rendering placeholder, and no-preview fallback; optional `aspect` locks the frame to the render’s native canvas so nothing is cropped.' },
             ],
         },
         {
@@ -757,7 +797,7 @@ export const sections = {
             title: 'Feature pages',
             summary: 'Each feature owns a folder with `pages/`. `app.js` resolves any `features/**/pages/*.vue` by name.',
             entries: [
-                { path: 'resources/js/features/landing/pages/Welcome.vue', lineCount: 503, role: 'Public marketing page: hero, features, live showcase, how-it-works, pricing, FAQ, final CTA.' },
+                { path: 'resources/js/features/landing/pages/Welcome.vue', lineCount: 514, role: 'Public marketing page: hero, features, live showcase, how-it-works, pricing, FAQ, final CTA; showcase cards take each render’s native aspect ratio in a masonry layout.' },
                 { path: 'resources/js/features/auth/pages/Login.vue', lineCount: 108, role: 'Sign-in form with password visibility toggle, remember-me, validation errors and the forgot-password link.' },
                 { path: 'resources/js/features/auth/pages/Register.vue', lineCount: 160, role: 'Registration with terms checkbox, password confirmation and the welcome-credits pitch.' },
                 { path: 'resources/js/features/auth/pages/ForgotPassword.vue', lineCount: 64, role: 'Requests a reset link and shows the neutral status message.' },
@@ -777,9 +817,10 @@ export const sections = {
                 { path: 'resources/js/features/creations/pages/Creations.vue', lineCount: 311, role: 'Gallery with status tabs + counts, debounced search, pagination, cards and the detail modal. Auto-refresh pauses while the search field is focused, and the field mirrors topbar searches.' },
                 { path: 'resources/js/features/billing/pages/Billing.vue', lineCount: 296, role: 'Balance/purchased/bonus/consumed summary, credit packages, demo checkout, ledger table with per-type icons.' },
                 { path: 'resources/js/features/settings/pages/Settings.vue', lineCount: 308, role: 'Profile, password, account stats and danger-zone deletion, each as its own form.' },
-                { path: 'resources/js/features/admin/pages/AdminDashboard.vue', lineCount: 427, role: 'KPI cards, range selector, trend chart, provider reconciliation with manual sync, per-user spend table, recent generations.' },
+                { path: 'resources/js/features/admin/pages/AdminDashboard.vue', lineCount: 435, role: 'KPI cards, range selector, trend chart, provider reconciliation with manual sync, per-user spend table, recent generations.' },
+                { path: 'resources/js/features/admin/pages/AdminReports.vue', lineCount: 557, role: 'Operator report: range selector, provider sync, summary cards, reconciliation, daily and per-user tables, PDF/Excel/PNG downloads.' },
                 { path: 'resources/js/features/docs/pages/UserGuide.vue', lineCount: 343, role: 'Public user guide (getting started, credits, studio, gallery, account, FAQ).' },
-                { path: 'resources/js/features/docs/pages/DeveloperGuide.vue', lineCount: 594, role: 'Public developer guide: architecture, setup, provider API, webhooks, pricing, jobs, deployment.' },
+                { path: 'resources/js/features/docs/pages/DeveloperGuide.vue', lineCount: 622, role: 'Public developer guide: architecture, setup, provider API, webhooks, pricing, jobs, deployment.' },
                 { path: 'resources/js/features/legal/pages/Terms.vue', lineCount: 49, role: 'Terms page; content rendered through `LegalPage`.' },
                 { path: 'resources/js/features/legal/pages/Privacy.vue', lineCount: 48, role: 'Privacy page; content rendered through `LegalPage`.' },
             ],
@@ -838,7 +879,7 @@ export const sections = {
             entries: [
                 {
                     path: 'resources/js/lib/routes.js',
-                    lineCount: 33,
+                    lineCount: 38,
                     role: 'Single list of URL strings plus `generationStatusUrl()` / `generationUrl()` helpers. Keep in sync with `routes/web.php`.',
                 },
                 {
@@ -949,17 +990,17 @@ export const sections = {
             entries: [
                 { path: 'database/factories/UserFactory.php', lineCount: 40, role: 'User factory with admin/bonus state helpers (see the file for the exact states).' },
                 { path: 'database/factories/GenerationFactory.php', lineCount: 61, role: 'Generation factory with sensible canvas/cost defaults and status states.' },
-                { path: 'database/seeders/DatabaseSeeder.php', lineCount: 17, role: 'Creates the administrator, then seeds demo data outside production only.' },
+                { path: 'database/seeders/DatabaseSeeder.php', lineCount: 13, role: 'Creates the administrator, then seeds demo data outside production only.' },
                 {
                     path: 'database/seeders/AdminUserSeeder.php',
-                    lineCount: 26,
+                    lineCount: 23,
                     role: 'Creates or refreshes the admin account from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD`.',
-                    details: ['Safe to re-run; the password is reset to the configured value.'],
+                    details: ['Safe to re-run; the password is reset to the configured value.', 'The operator starts with zero credits.'],
                 },
                 {
                     path: 'database/seeders/DemoDataSeeder.php',
-                    lineCount: 215,
-                    role: 'Creates the demo creator (`demo@lumora.app`, password `password`), sample creations and ledger history, and funds the admin when present.',
+                    lineCount: 185,
+                    role: 'Creates the demo creator (`demo@lumora.app`, password `password`), sample creations and ledger history. It does not fund the operator account.',
                     details: ['Run with `php artisan migrate:fresh --seed` locally only.'],
                 },
             ],

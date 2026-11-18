@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     CreditCard,
+    FileText,
     Images,
     LayoutDashboard,
     PanelLeftClose,
@@ -36,15 +37,24 @@ const items = computed(() => {
 
     if (user.value?.is_admin) {
         nav.push({ label: 'Admin Dashboard', href: routes.admin, icon: ShieldCheck, match: 'admin' });
+        nav.push({ label: 'Operator Report', href: routes.adminReports, icon: FileText, match: 'admin/reports' });
     }
 
     return nav;
 });
 
-const isActive = (item) => {
-    const strip = (value) => value.replace(/^\/+/, '').split('/')[0];
-    return strip(page.url) === strip(item.match);
-};
+const currentPath = computed(() => {
+    const [path] = page.url.split('?');
+    return path.length > 1 ? path.replace(/\/+$/, '') : path;
+});
+
+const activeHref = computed(() => {
+    return items.value
+        .filter((item) => currentPath.value === item.href || currentPath.value.startsWith(`${item.href}/`))
+        .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+});
+
+const isActive = (item) => activeHref.value === item.href;
 
 const credits = computed(() => formatCredits(user.value?.credit_balance_micros ?? 0));
 </script>
@@ -108,7 +118,7 @@ const credits = computed(() => formatCredits(user.value?.credit_balance_micros ?
                 <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
 
                 <span
-                    v-if="!collapsed && item.match === 'admin'"
+                    v-if="!collapsed && (item.match === 'admin' || item.match === 'admin/reports')"
                     class="ml-auto rounded-full bg-brand-500/12 px-1.5 py-0.5 font-alt text-[9px] font-bold uppercase tracking-wider text-brand-700 dark:text-brand-200"
                 >
                     Admin

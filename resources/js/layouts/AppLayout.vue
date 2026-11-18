@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     CreditCard,
+    FileText,
     Home,
     Images,
     LayoutDashboard,
@@ -44,6 +45,7 @@ const navItems = computed(() => {
 
     if (user.value?.is_admin) {
         items.push({ label: 'Admin Dashboard', href: routes.admin, icon: ShieldCheck, match: 'admin' });
+        items.push({ label: 'Operator Report', href: routes.adminReports, icon: FileText, match: 'admin/reports' });
     }
 
     return items;

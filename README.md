@@ -15,6 +15,7 @@ Lumora is a production-shaped AI image generation studio built with Laravel, Vue
 - **Gallery** — responsive grid, status filters, prompt search, pagination and a detail modal with the full cost breakdown.
 - **Billing** — balance, purchased/bonus/consumed totals, idempotent demo purchases and a complete transaction ledger.
 - **Admin** — revenue vs provider cost charts, profit, success/failure health, top spenders and provider usage reconciliation.
+- **Operator report** — per-day and per-user credit spend, provider cost and profit for 7/14/30/90 days, reconciled against `GET /v1/usage` and downloadable as PDF, Excel or PNG. Because Pixelforge reports usage as daily totals, each account’s provider API cost is allocated from that day’s pool by its share of the day’s local provider cost, so the per-user column adds up to the API total.
 - **Themes & SEO** — light/dark/system theme with persistence, server-rendered meta/canonical/OpenGraph/JSON-LD, sitemap, robots and `noindex` on private pages.
 
 ## Stack
@@ -75,7 +76,7 @@ Seeded by `php artisan migrate --seed`:
 | Admin | `admin@lumora.com` | `password` |
 | Creator | `demo@lumora.app` | `password` |
 
-The admin account comes from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD` (defaults shown above). It is the only account created when `APP_ENV=production`; the demo creator and sample generations are seeded outside production only. Set a strong `LUMORA_ADMIN_PASSWORD` before seeding a public deployment.
+The admin account comes from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD` (defaults shown above). It is the only account created when `APP_ENV=production`; the demo creator and sample generations are seeded outside production only. The operator starts with no credits and is never given the demo Pro pack, because reports do not need a wallet balance. Set a strong `LUMORA_ADMIN_PASSWORD` before seeding a public deployment.
 
 The demo data includes 20 succeeded generations, one failed generation and a pending render, plus ledger entries that reconcile to the wallet balances. Showcase imagery uses Unsplash URLs so the landing page is populated without provider credentials.
 
@@ -107,7 +108,7 @@ PIXELFORGE_SIGNATURE_SCHEME=timestamped
    - `raw`: `HMAC-SHA256(rawBody)`.
 4. Event IDs are deduplicated in `webhook_events`. Events older than the last applied transition are ignored, unmatched events are stored and replayed once the generation can be linked.
 5. If webhooks are delayed, `lumora:poll-generations` polls `GET /v1/generations/{id}` on a schedule. Polling also expires stale jobs and refunds them.
-6. `GET /v1/usage` is read by the admin “Reconcile usage” action and hourly by `lumora:reconcile-usage`.
+6. `GET /v1/usage` is read by the admin “Reconcile usage” action, by the operator report’s “Sync provider usage” action for its selected range, and hourly by `lumora:reconcile-usage`. Daily provider aggregates are stored once per date, so repeated syncs update the same rows instead of duplicating them.
 
 ### Event shapes
 
@@ -195,7 +196,7 @@ Lumora needs a standard PHP host with a persistent database and a queue worker. 
    - Confirm `https://your-domain.com/robots.txt` and `/sitemap.xml` resolve over HTTPS.
    - Add the domain to Google Search Console and submit the sitemap.
    - Private pages (`/dashboard`, `/generate`, `/creations`, `/billing`, `/settings`, `/admin`) are disallowed in `robots.txt` and served with `noindex`.
-7. **Smoke test**: register, confirm the welcome bonus, buy a package, run a render, verify the webhook settles it, check the admin dashboard and reconcile against provider usage.
+7. **Smoke test**: register, confirm the welcome bonus, buy a package, run a render, verify the webhook settles it, check the admin dashboard, open the operator report, sync provider usage for the range and download each export.
 
 ### Deployment status
 
@@ -215,6 +216,8 @@ app/
     Generations/{GenerationService,GenerationFinalizer,WebhookProcessor}.php
     Pixelforge/{PixelforgeClient,PricingCalculator,UsageReconciler,WebhookSignature}.php
     Admin/AdminMetrics.php
+    Admin/AdminReportService.php
+    Admin/Reports/{ReportPdf,ReportXlsx,ReportPng}.php
   Support/{Money,Seo}.php
 resources/js/
   components/{ui,brand,layout,charts}/

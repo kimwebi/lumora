@@ -475,7 +475,7 @@ const visitActive = () => {
                                 <div class="flex items-center justify-between">
                                     <span class="font-alt text-[9.5px] font-bold uppercase tracking-[0.16em] text-subtle">In credits</span>
                                     <span class="tabular text-[13px] font-semibold text-ink">
-                                        {{ formatCredits(estimate.total) }} cr
+                                        {{ formatCredits(estimate.total) }} credits
                                     </span>
                                 </div>
                                 <div class="mt-2 flex items-center justify-between">
@@ -486,7 +486,7 @@ const visitActive = () => {
                                             affordable ? 'text-ink' : 'text-danger',
                                         ]"
                                     >
-                                        {{ formatCredits(Math.max(0, balance - estimate.total)) }} cr
+                                        {{ formatCredits(Math.max(0, balance - estimate.total)) }} credits
                                     </span>
                                 </div>
                             </div>

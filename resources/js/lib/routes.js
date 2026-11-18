@@ -20,6 +20,8 @@ export const routes = {
     settingsAccount: '/settings/account',
     admin: '/admin',
     adminReconcile: '/admin/reconcile',
+    adminReports: '/admin/reports',
+    adminReportsSync: '/admin/reports/sync',
     terms: '/terms',
     privacy: '/privacy',
     guide: '/guide',
@@ -32,4 +34,8 @@ export function generationStatusUrl(uuid) {
 
 export function generationUrl(uuid) {
     return `${routes.generations}/${uuid}`;
+}
+
+export function adminReportExportUrl(format, days) {
+    return `${routes.adminReports}/export/${format}?days=${encodeURIComponent(days)}`;
 }

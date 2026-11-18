@@ -60,6 +60,8 @@ const sections = [
   Policies/                    GenerationPolicy
   Services/
     Admin/AdminMetrics.php
+    Admin/AdminReportService.php
+    Admin/Reports/            PDF, XLSX and PNG writers
     Billing/CreditService.php
     Generations/               GenerationService, GenerationFinalizer, WebhookProcessor
     Pixelforge/                PixelforgeClient, PricingCalculator, WebhookSignature, UsageReconciler
@@ -87,6 +89,7 @@ tests/Unit, tests/Feature      PHPUnit test suite`,
                     ['`app/Services/Generations/GenerationService.php`', 'Creates a generation, checks limits, applies the hold, dispatches the job and exposes status.'],
                     ['`app/Services/Generations/GenerationFinalizer.php`', 'The only place a render becomes terminal. Settles or refunds exactly once.'],
                     ['`app/Services/Pixelforge/*`', 'Provider HTTP client, pricing maths, webhook signature verification and usage reconciliation.'],
+                    ['`app/Services/Admin/*`', 'Dashboard metrics plus the operator report builder and its dependency-free PDF, Excel and PNG exporters.'],
                     ['`resources/js/features/*/pages/*.vue`', 'One Inertia page per screen, grouped by product area.'],
                     ['`tests/`', 'Unit tests for money and signatures; feature tests for generation, webhooks, billing, admin, auth and settings.'],
                 ],
@@ -123,7 +126,7 @@ tests/Unit, tests/Feature      PHPUnit test suite`,
                 type: 'callout',
                 tone: 'warning',
                 title: 'Administrator credentials',
-                text: 'The admin account is configured with `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD`. Set a strong password before seeding a public deployment. Production seeds the admin only; demo users and sample generations are skipped there.',
+                text: 'The admin account is configured with `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD`. Set a strong password before seeding a public deployment. Production seeds the admin only; demo users and sample generations are skipped there. The operator starts with zero credits and is not funded by the demo seeder, because reports never require a wallet balance.',
             },
             {
                 type: 'callout',
@@ -195,7 +198,7 @@ LUMORA_GENERATIONS_AFTER_RESPONSE=false`,
                     { title: 'Restart workers', text: 'Run `php artisan queue:restart` whenever credentials or configuration change. Long-running workers keep the old config in memory.' },
                     { title: 'Verify the connection', text: 'Open **Generate Image**. The provider badge should report that the studio is connected and the generate button should become available when the other conditions are met.' },
                     { title: 'Send a real render', text: 'Submit a low quality render and watch `storage/logs/laravel.log`. The client logs the method, path, status, duration and provider request id for every call.' },
-                    { title: 'Reconcile usage', text: 'Once real jobs have run, use **Admin Dashboard → Reconcile usage** (or `php artisan lumora:reconcile-usage --days=2`) to pull `GET /v1/usage` and compare provider cost with local settlements.' },
+                    { title: 'Reconcile usage', text: 'Once real jobs have run, use **Admin Dashboard → Reconcile usage** for the last two days, or **Operator Report → Sync provider usage** for the report range (or `php artisan lumora:reconcile-usage --days=2`). Both pull `GET /v1/usage` and compare provider cost with local settlements.' },
                 ],
             },
             {
@@ -416,7 +419,7 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
                     ['`Pixelforge\\PixelforgeClient`', 'Bearer-authenticated HTTP calls, timeouts, error mapping and structured logging.'],
                     ['`Pixelforge\\PricingCalculator`', 'Rate-card estimates, token usage extraction, actual cost resolution and markup.'],
                     ['`Pixelforge\\WebhookSignature`', 'Timestamped and raw HMAC verification with replay tolerance.'],
-                    ['`Pixelforge\\UsageReconciler`', 'Pulls provider usage for a window, upserts usage records and supports admin reconciliation.'],
+                    ['`Pixelforge\\UsageReconciler`', 'Pulls provider usage for a window, upserts daily aggregates by date and supports admin reconciliation.'],
                     ['`Billing\\CreditService`', 'The only wallet writer: holds, settlement adjustments, refunds, purchases and grants.'],
                     ['`Generations\\GenerationService`', 'Creation rules, active-render limit, balance hold, dispatch, expiry and status payloads.'],
                     ['`Generations\\GenerationFinalizer`', 'Idempotent terminal state plus wallet settlement for success and failure.'],
@@ -424,6 +427,8 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
                     ['`Jobs\\SubmitGenerationJob`', 'Provider submission, rate limiting, retries and configuration failure handling.'],
                     ['`Jobs\\PollGenerationJob`', 'Status polling fallback, 404 tolerance and terminal handling.'],
                     ['`Admin\\AdminMetrics`', 'Revenue, provider cost, profit, daily series, success health and per-user spending.'],
+                    ['`Admin\\AdminReportService`', 'One shared report payload for the operator page and every export: range, totals, reconciliation, daily and per-user rows.'],
+                    ['`Admin\\Reports\\ReportPdf`, `ReportXlsx`, `ReportPng`', 'Dependency-free writers for the three downloads. PDF uses base-14 Helvetica, Excel is a ZIP of OOXML parts, PNG is drawn with GD.'],
                 ],
             },
             {
@@ -475,8 +480,8 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
     },
     {
         id: 'admin',
-        title: 'Admin dashboard and reconciliation',
-        intro: 'Administrators get a separate dashboard at `/admin`, protected by the `admin` middleware and the `is_admin` flag on the user record.',
+        title: 'Admin dashboard, operator report and reconciliation',
+        intro: 'Administrators get a separate dashboard at `/admin` and an operator report at `/admin/reports`, both protected by the `admin` middleware and the `is_admin` flag on the user record.',
         blocks: [
             {
                 type: 'list',
@@ -486,6 +491,20 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
                     'Top spenders are aggregated per user, including totals and render counts.',
                     '**Reconcile usage** calls `UsageReconciler`, which reads `GET /v1/usage` for the last two days, upserts `provider_usage_records` and reports the variance.',
                     'The same reconciliation runs hourly via `lumora:reconcile-usage` and also replays unmatched webhook events.',
+                ],
+            },
+            {
+                type: 'paragraph',
+                text: 'The operator report is the bookkeeping view. It accepts `?days=7|14|30|90`, groups customer charges, provider cost and profit by day and by account, and compares local provider cost with the provider API cost for the same range. **Sync provider usage** pulls `GET /v1/usage` for the selected range, so the variance covers exactly the dates on screen. **PDF**, **Excel** and **PNG** download the same payload from `AdminReportService`; no extra Composer packages are required.',
+            },
+            {
+                type: 'list',
+                items: [
+                    'Customer charge is `actual_user_charge_micros`; provider cost is `actual_provider_cost_micros`; profit is the difference.',
+                    'Provider (API) comes from daily `provider_usage_records`; daily aggregates are keyed by date so repeated syncs update the same row.',
+                    'A missing provider sync shows “Not synced” rather than a misleading zero variance.',
+                    'Pixelforge reports usage as daily totals, so per-user API cost is allocated by each account’s share of that day’s local provider cost.',
+                    'Exports are admin-only responses with `private, no-store` caching; filenames include the report range.',
                 ],
             },
             {
@@ -529,6 +548,9 @@ npm run build                    # production front-end build`,
                     ['`tests/Feature/WebhookTest.php`', 'HMAC acceptance, duplicate delivery, out-of-order events, unmatched events and test keywords.'],
                     ['`tests/Feature/BillingTest.php`', 'Packages, idempotent purchases and wallet summaries.'],
                     ['`tests/Feature/AdminTest.php`', 'Metrics, authorization and reconciliation.'],
+                    ['`tests/Feature/AdminReportTest.php`', 'Report authorization, daily/per-user totals, provider variance, range sync and export signatures.'],
+                    ['`tests/Feature/UsageReconcilerTest.php`', 'Idempotent daily usage upserts and collapsing older hashed rows.'],
+                    ['`tests/Feature/AdminUserSeederTest.php`', 'Operator creation, password reset and zero demo credits.'],
                     ['`tests/Feature/AuthorizationTest.php`', 'Ownership rules for viewing and deleting generations.'],
                     ['`tests/Feature/RegistrationTest.php`, `SettingsTest.php`', 'Welcome bonus, profile and password changes, account deletion.'],
                 ],

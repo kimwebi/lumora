@@ -18,9 +18,18 @@ const emit = defineEmits(['close']);
 const page = usePage();
 const user = computed(() => page.props.auth?.user);
 
-const strip = (value) => value.replace(/^\/+/, '').split('/')[0];
+const currentPath = computed(() => {
+    const [path] = page.url.split('?');
+    return path.length > 1 ? path.replace(/\/+$/, '') : path;
+});
 
-const isActive = (item) => strip(page.url) === strip(item.match);
+const activeHref = computed(() => {
+    return props.items
+        .filter((item) => currentPath.value === item.href || currentPath.value.startsWith(`${item.href}/`))
+        .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+});
+
+const isActive = (item) => activeHref.value === item.href;
 
 const onKeydown = (event) => {
     if (event.key === 'Escape') emit('close');

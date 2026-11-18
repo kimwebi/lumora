@@ -75,25 +75,56 @@ class UsageReconciler
                 ?? $record['timestamp']
                 ?? null;
 
-            $usageId = (string) (
-                Arr::get($record, 'id')
-                ?? Arr::get($record, 'usage_id')
-                ?? 'usage_'.substr(hash('sha256', json_encode($record) ?: Str::random(16)), 0, 32)
-            );
+            $explicitId = Arr::get($record, 'id') ?? Arr::get($record, 'usage_id');
+
+            // The provider reports usage as a daily aggregate with no id. Key
+            // those rows by date so repeated syncs update the same row instead
+            // of creating a new one whenever the day's totals change.
+            $usageId = (string) ($explicitId
+                ?? ($occurredAt
+                    ? 'usage_'.sha1((string) $occurredAt)
+                    : 'usage_'.substr(hash('sha256', json_encode($record) ?: Str::random(16)), 0, 32)));
+
+            $attributes = [
+                'provider_generation_id' => $providerId,
+                'generation_id' => $generation?->id,
+                'input_tokens' => (int) ($usage['input_text_tokens'] ?? $usage['input_tokens'] ?? $usage['prompt_tokens'] ?? 0),
+                'output_tokens' => (int) ($usage['output_tokens'] ?? $usage['completion_tokens'] ?? 0),
+                'image_tokens' => (int) ($usage['input_image_tokens'] ?? $usage['image_tokens'] ?? 0),
+                'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
+                'provider_cost_micros' => $providerMicros,
+                'occurred_at' => $occurredAt,
+                'raw' => $record,
+            ];
+
+            if (! $explicitId && $occurredAt) {
+                $legacy = ProviderUsageRecord::query()
+                    ->whereNull('provider_generation_id')
+                    ->whereNull('generation_id')
+                    ->whereDate('occurred_at', $occurredAt)
+                    ->where('provider_usage_id', '!=', $usageId)
+                    ->orderBy('id')
+                    ->get();
+
+                if ($legacy->isNotEmpty()) {
+                    $keep = $legacy->shift();
+
+                    $keep->forceFill($attributes + ['provider_usage_id' => $usageId])->save();
+
+                    // Older syncs keyed daily aggregates by a random hash, so a
+                    // single day can have several stale rows. Collapse them.
+                    ProviderUsageRecord::query()->whereKey($legacy->modelKeys())->delete();
+
+                    $stored++;
+                    $providerTotal += $providerMicros;
+
+                    continue;
+                }
+            }
 
             ProviderUsageRecord::query()->updateOrCreate(
                 ['provider_usage_id' => $usageId],
-                [
-                    'provider_generation_id' => $providerId,
-                    'generation_id' => $generation?->id,
-                    'input_tokens' => (int) ($usage['input_text_tokens'] ?? $usage['input_tokens'] ?? $usage['prompt_tokens'] ?? 0),
-                    'output_tokens' => (int) ($usage['output_tokens'] ?? $usage['completion_tokens'] ?? 0),
-                    'image_tokens' => (int) ($usage['input_image_tokens'] ?? $usage['image_tokens'] ?? 0),
-                    'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
-                    'provider_cost_micros' => $providerMicros,
-                    'occurred_at' => $occurredAt,
-                    'raw' => $record,
-                ],
+                $attributes,
             );
 
             $stored++;

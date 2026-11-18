@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Database\Seeders\AdminUserSeeder;
+use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use PHPUnit\Framework\Attributes\Test;
@@ -50,5 +51,23 @@ class AdminUserSeederTest extends TestCase
         $admin = User::query()->where('email', 'admin@lumora.com')->firstOrFail();
         $this->assertTrue(Hash::check('second-password', $admin->password));
         $this->assertFalse(Hash::check('first-password', $admin->password));
+    }
+
+    #[Test]
+    public function demo_seeding_does_not_grant_the_operator_demo_credits(): void
+    {
+        config([
+            'lumora.admin.name' => 'Ava Lumora',
+            'lumora.admin.email' => 'admin@lumora.com',
+            'lumora.admin.password' => 'password',
+        ]);
+
+        $this->seed(AdminUserSeeder::class);
+        $this->seed(DemoDataSeeder::class);
+
+        $admin = User::query()->where('email', 'admin@lumora.com')->firstOrFail();
+
+        $this->assertSame(0, $admin->credit_balance_micros);
+        $this->assertSame(0, $admin->creditTransactions()->count());
     }
 }

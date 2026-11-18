@@ -126,6 +126,23 @@ const toggleFaq = (index) => {
 
 const showcaseImages = computed(() => props.showcase.slice(0, 6));
 
+/**
+ * Match the card to the render's native canvas so the artwork and its
+ * baked-in caption fill the frame edge to edge instead of being cropped.
+ */
+const aspectFor = (image, fallback = '4 / 5') => {
+    const match = /^(\d+)x(\d+)$/.exec(String(image.size ?? ''));
+
+    if (!match) {
+        return fallback;
+    }
+
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+
+    return width > 0 && height > 0 ? `${width} / ${height}` : fallback;
+};
+
 const placeholderTiles = [
     'from-[#2e1065] via-[#6d28d9] to-[#c4b5fd]',
     'from-[#0f172a] via-[#1e3a8a] to-[#22d3ee]',
@@ -215,16 +232,17 @@ const placeholderTiles = [
                     <div class="relative animate-rise">
                         <div class="pointer-events-none absolute -inset-6 rounded-[2rem] bg-brand-500/10 blur-3xl" aria-hidden="true" />
 
-                        <div class="relative grid grid-cols-2 gap-3 sm:gap-4">
+                        <div class="relative columns-2 gap-x-3 sm:gap-x-4">
                             <div
-                                v-for="(image, index) in showcaseImages"
+                                v-for="image in showcaseImages"
                                 :key="image.uuid"
-                                :class="[
-                                    'overflow-hidden rounded-2xl border border-line bg-surface shadow-card transition-transform duration-500 hover:-translate-y-1',
-                                    index % 3 === 1 ? 'translate-y-4 sm:translate-y-6' : '',
-                                ]"
+                                class="mb-3 break-inside-avoid overflow-hidden rounded-2xl border border-line bg-surface shadow-card transition-transform duration-500 hover:-translate-y-1 sm:mb-4"
                             >
-                                <SmartImage :src="image.image_url" :alt="image.prompt" ratio="aspect-[4/5]" />
+                                <SmartImage
+                                    :src="image.image_url"
+                                    :alt="image.prompt"
+                                    :aspect="aspectFor(image)"
+                                />
                             </div>
 
                             <template v-if="showcaseImages.length === 0">
@@ -232,10 +250,8 @@ const placeholderTiles = [
                                     v-for="(tile, index) in placeholderTiles"
                                     :key="index"
                                     :class="[
-                                        'relative overflow-hidden rounded-2xl bg-gradient-to-br',
+                                        'relative mb-3 break-inside-avoid overflow-hidden rounded-2xl bg-gradient-to-br sm:mb-4',
                                         tile,
-                                        index % 3 === 1 ? 'translate-y-4 sm:translate-y-6' : '',
-                                        index > 3 ? 'hidden sm:block' : '',
                                     ]"
                                 >
                                     <div class="absolute inset-0 dot-grid opacity-25" aria-hidden="true" />
@@ -329,20 +345,19 @@ const placeholderTiles = [
                         </Button>
                     </div>
 
-                    <div class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+                    <div class="mt-8 columns-2 gap-x-3 sm:columns-3">
                         <template v-if="showcaseImages.length">
                             <figure
                                 v-for="image in showcaseImages"
                                 :key="image.uuid"
-                                class="group overflow-hidden rounded-2xl border border-line bg-surface shadow-card"
+                                class="mb-3 break-inside-avoid overflow-hidden rounded-2xl border border-line bg-surface shadow-card"
                             >
                                 <SmartImage
                                     :src="image.image_url"
                                     :alt="image.prompt"
-                                    ratio="aspect-[4/3]"
-                                    class="transition-transform duration-700 group-hover:scale-[1.02]"
+                                    :aspect="aspectFor(image, '4 / 3')"
                                 />
-                                <figcaption class="clamp-2 p-3 text-[11.5px] leading-snug text-subtle">
+                                <figcaption class="p-3 text-[11.5px] leading-snug text-subtle">
                                     {{ image.prompt }}
                                 </figcaption>
                             </figure>
@@ -352,7 +367,7 @@ const placeholderTiles = [
                             <div
                                 v-for="(tile, index) in placeholderTiles"
                                 :key="index"
-                                :class="['relative overflow-hidden rounded-2xl bg-gradient-to-br', tile]"
+                                :class="['relative mb-3 break-inside-avoid overflow-hidden rounded-2xl bg-gradient-to-br', tile]"
                             >
                                 <div class="absolute inset-0 dot-grid opacity-20" aria-hidden="true" />
                                 <div class="aspect-[4/3]" />

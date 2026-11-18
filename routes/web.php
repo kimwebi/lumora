@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -70,4 +71,10 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
     Route::post('/reconcile', [AdminDashboardController::class, 'reconcile'])->name('reconcile');
+
+    Route::get('/reports', [AdminReportController::class, 'index'])->name('reports');
+    Route::post('/reports/sync', [AdminReportController::class, 'sync'])->name('reports.sync');
+    Route::get('/reports/export/{format}', [AdminReportController::class, 'export'])
+        ->whereIn('format', ['pdf', 'xlsx', 'png'])
+        ->name('reports.export');
 });

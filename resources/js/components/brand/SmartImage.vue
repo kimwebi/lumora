@@ -7,6 +7,7 @@ const props = defineProps({
     alt: { type: String, default: '' },
     processing: { type: Boolean, default: false },
     ratio: { type: String, default: 'aspect-[4/3]' },
+    aspect: { type: String, default: null },
     rounded: { type: String, default: '' },
     fit: { type: String, default: 'cover' },
 });
@@ -23,7 +24,10 @@ const objectFit = computed(() => (props.fit === 'contain' ? 'object-contain' : '
 </script>
 
 <template>
-    <div :class="['relative overflow-hidden bg-elevated', ratio, rounded]">
+    <div
+        :class="['relative overflow-hidden bg-elevated', aspect ? '' : ratio, rounded]"
+        :style="aspect ? { aspectRatio: aspect } : undefined"
+    >
         <img
             v-if="showImage"
             :src="src"

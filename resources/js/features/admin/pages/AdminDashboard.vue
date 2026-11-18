@@ -1,12 +1,13 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import {
     Activity,
     ArrowUpRight,
     CircleDollarSign,
     Coins,
     Database,
+    FileText,
     RefreshCw,
     ShieldCheck,
     Sparkles,
@@ -122,6 +123,14 @@ const lastSyncLabel = computed(() => (lastSync.value ? formatDateTime(lastSync.v
                             {{ option.label }}
                         </button>
                     </div>
+
+                    <Link
+                        :href="routes.adminReports"
+                        class="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-[12.5px] font-semibold text-ink transition hover:border-brand-400/70 hover:text-brand-700 dark:hover:text-brand-200"
+                    >
+                        <FileText class="h-4 w-4" />
+                        Operator report
+                    </Link>
 
                     <Button variant="secondary" size="md" :loading="reconciling" @click="reconcile">
                         <template #icon><RefreshCw class="h-4 w-4" /></template>
@@ -381,7 +390,7 @@ const lastSyncLabel = computed(() => (lastSync.value ? formatDateTime(lastSync.v
                                     />
                                 </div>
                                 <span class="tabular text-[10.5px] text-subtle">
-                                    {{ formatCredits(creator.charge_micros) }} cr
+                                    {{ formatCredits(creator.charge_micros) }} credits
                                 </span>
                             </div>
                         </article>
@@ -426,7 +435,7 @@ const lastSyncLabel = computed(() => (lastSync.value ? formatDateTime(lastSync.v
                                                 />
                                             </div>
                                             <span class="tabular text-[10.5px] text-subtle">
-                                                {{ formatCredits(creator.charge_micros) }} cr
+                                                {{ formatCredits(creator.charge_micros) }} credits
                                             </span>
                                         </div>
                                     </td>
@@ -466,7 +475,7 @@ const lastSyncLabel = computed(() => (lastSync.value ? formatDateTime(lastSync.v
                     <p class="font-alt text-[9.5px] font-bold uppercase tracking-[0.14em] text-subtle">Coins in circulation</p>
                     <p class="mt-1.5 text-[13px] font-semibold text-ink">
                         <Coins class="mr-1 inline h-3 w-3 text-brand-500" />
-                        {{ formatCredits(perUser.reduce((sum, user) => sum + user.balance_micros, 0)) }} cr
+                        {{ formatCredits(perUser.reduce((sum, user) => sum + user.balance_micros, 0)) }} credits
                     </p>
                 </div>
             </div>

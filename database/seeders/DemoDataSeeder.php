@@ -54,8 +54,6 @@ class DemoDataSeeder extends Seeder
         $finalizer = app(GenerationFinalizer::class);
         $pricing = app(PricingCalculator::class);
 
-        $admin = User::query()->where('email', config('lumora.admin.email'))->first();
-
         $demo = User::query()->updateOrCreate(
             ['email' => 'demo@lumora.app'],
             [
@@ -65,10 +63,6 @@ class DemoDataSeeder extends Seeder
                 'email_verified_at' => now(),
             ],
         );
-
-        if ($admin instanceof User) {
-            $this->fund($credits, $admin, 'pro', 'seed-admin-purchase');
-        }
 
         $this->fund($credits, $demo, 'studio', 'seed-demo-purchase');
 
