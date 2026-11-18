@@ -54,15 +54,7 @@ class DemoDataSeeder extends Seeder
         $finalizer = app(GenerationFinalizer::class);
         $pricing = app(PricingCalculator::class);
 
-        $admin = User::query()->updateOrCreate(
-            ['email' => 'admin@lumora.app'],
-            [
-                'name' => 'Ava Lumora',
-                'password' => Hash::make('password'),
-                'is_admin' => true,
-                'email_verified_at' => now(),
-            ],
-        );
+        $admin = User::query()->where('email', config('lumora.admin.email'))->first();
 
         $demo = User::query()->updateOrCreate(
             ['email' => 'demo@lumora.app'],
@@ -74,7 +66,10 @@ class DemoDataSeeder extends Seeder
             ],
         );
 
-        $this->fund($credits, $admin, 'pro', 'seed-admin-purchase');
+        if ($admin instanceof User) {
+            $this->fund($credits, $admin, 'pro', 'seed-admin-purchase');
+        }
+
         $this->fund($credits, $demo, 'studio', 'seed-demo-purchase');
 
         $createdAt = Carbon::now()->subDays(12)->setTime(10, 15);

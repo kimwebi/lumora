@@ -66,14 +66,16 @@ php artisan schedule:work
 
 For frontend development use `npm run dev` instead of `npm run build`.
 
-### Demo accounts
+### Accounts
 
-Seeded by `php artisan migrate:fresh --seed`:
+Seeded by `php artisan migrate --seed`:
 
 | Role | Email | Password |
 | --- | --- | --- |
-| Admin | `admin@lumora.app` | `password` |
+| Admin | `admin@lumora.com` | `password` |
 | Creator | `demo@lumora.app` | `password` |
+
+The admin account comes from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD` (defaults shown above). It is the only account created when `APP_ENV=production`; the demo creator and sample generations are seeded outside production only. Set a strong `LUMORA_ADMIN_PASSWORD` before seeding a public deployment.
 
 The demo data includes 20 succeeded generations, one failed generation and a pending render, plus ledger entries that reconcile to the wallet balances. Showcase imagery uses Unsplash URLs so the landing page is populated without provider credentials.
 
@@ -168,17 +170,20 @@ Lumora needs a standard PHP host with a persistent database and a queue worker. 
    - Database credentials.
    - `SESSION_DRIVER=database`, `QUEUE_CONNECTION=database`, `CACHE_STORE=database`.
    - A real mailer for password resets.
+   - `LUMORA_ADMIN_EMAIL` and a strong `LUMORA_ADMIN_PASSWORD` for the administrator account.
    - Pixelforge credentials and webhook secret.
 3. **Build and migrate**:
    ```bash
    composer install --no-dev --optimize-autoloader
    php artisan migrate --force
+   php artisan db:seed --force
    php artisan storage:link
    php artisan config:cache
    php artisan route:cache
    php artisan view:cache
    npm ci && npm run build
    ```
+   In production the seeder creates the admin account only. To create just that account later, run `php artisan db:seed --class=AdminUserSeeder --force`.
 4. **Run workers**:
    ```bash
    php artisan queue:work --tries=5 --timeout=120

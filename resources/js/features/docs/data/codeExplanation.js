@@ -949,11 +949,17 @@ export const sections = {
             entries: [
                 { path: 'database/factories/UserFactory.php', lineCount: 40, role: 'User factory with admin/bonus state helpers (see the file for the exact states).' },
                 { path: 'database/factories/GenerationFactory.php', lineCount: 61, role: 'Generation factory with sensible canvas/cost defaults and status states.' },
-                { path: 'database/seeders/DatabaseSeeder.php', lineCount: 10, role: 'Delegates to the demo seeder.' },
+                { path: 'database/seeders/DatabaseSeeder.php', lineCount: 17, role: 'Creates the administrator, then seeds demo data outside production only.' },
+                {
+                    path: 'database/seeders/AdminUserSeeder.php',
+                    lineCount: 26,
+                    role: 'Creates or refreshes the admin account from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD`.',
+                    details: ['Safe to re-run; the password is reset to the configured value.'],
+                },
                 {
                     path: 'database/seeders/DemoDataSeeder.php',
-                    lineCount: 195,
-                    role: 'Creates the admin and demo users (`admin@lumora.app`, `demo@lumora.app`, password `password`), sample creations and ledger history.',
+                    lineCount: 215,
+                    role: 'Creates the demo creator (`demo@lumora.app`, password `password`), sample creations and ledger history, and funds the admin when present.',
                     details: ['Run with `php artisan migrate:fresh --seed` locally only.'],
                 },
             ],

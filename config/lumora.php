@@ -16,6 +16,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Administrator account
+    |--------------------------------------------------------------------------
+    |
+    | Used by Database\Seeders\AdminUserSeeder. Override the password in
+    | production before running the seeder for the first time.
+    |
+    */
+
+    'admin' => [
+        'name' => env('LUMORA_ADMIN_NAME', 'Ava Lumora'),
+        'email' => env('LUMORA_ADMIN_EMAIL', 'admin@lumora.com'),
+        'password' => env('LUMORA_ADMIN_PASSWORD', 'password'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | SEO defaults
     |--------------------------------------------------------------------------
     */
