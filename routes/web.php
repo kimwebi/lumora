@@ -78,3 +78,50 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         ->whereIn('format', ['pdf', 'xlsx', 'png'])
         ->name('reports.export');
 });
+
+
+use Illuminate\Support\Facades\Storage;
+use App\Models\Generation;
+
+Route::get('/admin/storage-check', function () {
+    abort_unless(auth()->check() && auth()->user()->is_admin, 403);
+
+    $generations = Generation::where('user_id', auth()->id())
+        ->latest()
+        ->take(10)
+        ->get();
+
+    return response()->json([
+        'total_generations' => Generation::where(
+            'user_id',
+            auth()->id()
+        )->count(),
+
+        'filesystem_disk' => config('filesystems.default'),
+
+        'storage' => [
+            'public_root' => storage_path('app/public'),
+            'public_directory_exists' => is_dir(storage_path('app/public')),
+            'storage_link_exists' => file_exists(public_path('storage')),
+        ],
+
+        'generations' => $generations->map(function ($generation) {
+            $imageUrl = $generation->image_url;
+            $thumbnailUrl = $generation->thumbnail_url;
+
+            return [
+                'uuid' => $generation->uuid,
+                'status' => $generation->status,
+                'image_url' => $imageUrl,
+                'thumbnail_url' => $thumbnailUrl,
+                'image_exists' => $imageUrl
+                    ? Storage::disk('public')->exists($imageUrl)
+                    : false,
+                'thumbnail_exists' => $thumbnailUrl
+                    ? Storage::disk('public')->exists($thumbnailUrl)
+                    : false,
+            ];
+        }),
+    ]);
+})->middleware('auth');
+
