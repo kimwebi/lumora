@@ -49,7 +49,7 @@ const logout = () => {
                 <Sparkles class="h-3 w-3" />
                 Balance
             </span>
-            <span class="tabular text-[12.5px] font-semibold text-ink">{{ credits }} cr</span>
+            <span class="tabular text-[12.5px] font-semibold text-ink">{{ credits }} credits</span>
         </div>
 
         <div class="border-t border-line/70 pt-1">
