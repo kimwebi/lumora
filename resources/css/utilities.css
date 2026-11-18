@@ -1,0 +1,89 @@
+/* ------------------------------------------------------------------
+   Small composable utilities used across features
+   ------------------------------------------------------------------ */
+
+.text-gradient {
+    background: linear-gradient(100deg, #8b5cf6 0%, #a78bfa 42%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.surface {
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+}
+
+.ambient {
+    position: relative;
+    isolation: isolate;
+}
+
+.ambient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+        radial-gradient(58rem 34rem at 12% -12%, var(--glow-a), transparent 60%),
+        radial-gradient(42rem 30rem at 92% 4%, var(--glow-b), transparent 62%);
+    pointer-events: none;
+}
+
+.hairline {
+    background-image: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent);
+    height: 1px;
+}
+
+.glass {
+    background: color-mix(in oklab, var(--surface) 82%, transparent);
+    backdrop-filter: blur(18px) saturate(140%);
+}
+
+.focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+}
+
+.press {
+    @apply transition-all duration-200 active:scale-[0.98];
+}
+
+.lift {
+    @apply transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift;
+}
+
+.clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.tabular {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-alt);
+}
+
+.orb {
+    background:
+        radial-gradient(circle at 32% 28%, #c4b5fd 0%, #8b5cf6 32%, #6d28d9 62%, #2e1065 100%);
+    box-shadow:
+        inset 0 0 18px rgb(255 255 255 / 0.28),
+        0 0 42px -8px rgb(124 58 237 / 0.65);
+}
+
+.dot-grid {
+    background-image: radial-gradient(circle, color-mix(in oklab, var(--subtle) 26%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+}
+
+.mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+}

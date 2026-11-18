@@ -1,0 +1,81 @@
+/* ------------------------------------------------------------------
+   Lumora design tokens
+   ------------------------------------------------------------------ */
+
+@theme inline {
+    --font-display: 'Shantell Sans', 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    --font-alt: 'Quicksand', 'Outfit', ui-sans-serif, system-ui, sans-serif;
+
+    --color-brand-50: #f5f3ff;
+    --color-brand-100: #ede9fe;
+    --color-brand-200: #ddd6fe;
+    --color-brand-300: #c4b5fd;
+    --color-brand-400: #a78bfa;
+    --color-brand-500: #8b5cf6;
+    --color-brand-600: #7c3aed;
+    --color-brand-700: #6d28d9;
+    --color-brand-800: #5b21b6;
+    --color-brand-900: #4c1d95;
+    --color-brand-950: #2e1065;
+
+    --color-lavender: #c4b5fd;
+    --color-electric: #8b5cf6;
+    --color-accent: #22d3ee;
+    --color-midnight: #09090f;
+
+    --color-canvas: var(--canvas);
+    --color-surface: var(--surface);
+    --color-elevated: var(--elevated);
+    --color-muted: var(--muted);
+    --color-ink: var(--ink);
+    --color-subtle: var(--subtle);
+    --color-line: var(--line);
+    --color-input: var(--input);
+
+    --color-success: #22c55e;
+    --color-processing: #8b5cf6;
+    --color-pending: #f59e0b;
+    --color-danger: #ef4444;
+    --color-info: #38bdf8;
+
+    --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px -18px rgb(15 23 42 / 0.18);
+    --shadow-lift: 0 18px 48px -24px rgb(76 29 149 / 0.35);
+    --shadow-glow: 0 0 40px -12px rgb(124 58 237 / 0.55);
+}
+
+:root {
+    color-scheme: light;
+
+    --canvas: #f8fafc;
+    --surface: #ffffff;
+    --elevated: #f1f5f9;
+    --muted: #f1f5f9;
+    --ink: #0f172a;
+    --subtle: #64748b;
+    --line: #e2e8f0;
+    --input: #ffffff;
+
+    --glow-a: rgb(124 58 237 / 0.12);
+    --glow-b: rgb(34 211 238 / 0.09);
+    --ring: rgb(124 58 237 / 0.45);
+    --chart-grid: rgb(148 163 184 / 0.28);
+}
+
+.dark {
+    color-scheme: dark;
+
+    --canvas: #09090f;
+    --surface: #151522;
+    --elevated: #1c1c2b;
+    --muted: #10101b;
+    --ink: #f8fafc;
+    --subtle: #a1a1b5;
+    --line: #29293b;
+    --input: #171725;
+
+    --glow-a: rgb(124 58 237 / 0.2);
+    --glow-b: rgb(34 211 238 / 0.1);
+    --ring: rgb(139 92 246 / 0.6);
+    --chart-grid: rgb(148 163 184 / 0.16);
+}

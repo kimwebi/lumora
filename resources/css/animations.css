@@ -1,0 +1,146 @@
+/* ------------------------------------------------------------------
+   Motion — subtle, purposeful, and reduced-motion friendly
+   ------------------------------------------------------------------ */
+
+@keyframes lumora-rise {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes lumora-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes lumora-scale {
+    from {
+        opacity: 0;
+        transform: scale(0.97) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes lumora-slide-right {
+    from {
+        opacity: 0;
+        transform: translateX(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes lumora-shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes lumora-pulse-ring {
+    0% {
+        box-shadow: 0 0 0 0 rgb(139 92 246 / 0.45);
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgb(139 92 246 / 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgb(139 92 246 / 0);
+    }
+}
+
+@keyframes lumora-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+@keyframes lumora-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-rise {
+    animation: lumora-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade {
+    animation: lumora-fade 0.35s ease-out both;
+}
+
+.animate-scale-in {
+    animation: lumora-scale 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-slide-in {
+    animation: lumora-slide-right 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-shimmer {
+    background: linear-gradient(
+        100deg,
+        color-mix(in oklab, var(--elevated) 92%, transparent) 20%,
+        color-mix(in oklab, var(--line) 70%, transparent) 40%,
+        color-mix(in oklab, var(--elevated) 92%, transparent) 60%
+    );
+    background-size: 200% 100%;
+    animation: lumora-shimmer 1.6s linear infinite;
+}
+
+.animate-pulse-ring {
+    animation: lumora-pulse-ring 1.8s ease-out infinite;
+}
+
+.animate-float {
+    animation: lumora-float 7s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+    animation: lumora-spin 14s linear infinite;
+}
+
+.stagger > * {
+    animation: lumora-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
