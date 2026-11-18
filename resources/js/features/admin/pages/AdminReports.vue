@@ -217,7 +217,7 @@ const varianceClass = (value) => {
                 <StatCard
                     label="Provider cost · Pixelforge API"
                     :value="usageValue"
-                    :hint="hasUsage ? `${formatNumber(reconciliation.records)} usage record(s)` : 'Run Sync provider usage'"
+                    :hint="hasUsage ? `${formatNumber(reconciliation.records)} usage record(s)` : 'Press Sync provider usage'"
                     :icon="ReceiptText"
                     :tone="hasUsage ? 'info' : 'pending'"
                 />
@@ -282,15 +282,27 @@ const varianceClass = (value) => {
                     <div class="space-y-2 rounded-xl border border-line bg-muted/20 p-4">
                         <p class="flex items-start gap-2 text-[12px] leading-relaxed text-subtle">
                             <ShieldCheck class="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-500" />
-                            Last synced {{ lastSync }}. Variance is the Pixelforge API cost minus our settled
-                            provider records for {{ rangeLabel }}. Zero means the two agree. Pixelforge reports
-                            daily usage aggregates, so most usage rows are not tied to a single render.
+                            Last synced {{ lastSync }}. Sync pulls <span class="font-mono">GET /v1/usage</span> for the
+                            selected {{ range }} days; the hourly job refreshes the last two days automatically.
+                            Variance is the Pixelforge API cost minus our settled provider records for {{ rangeLabel }}.
+                            Zero means the two agree. Pixelforge reports daily usage aggregates, so most usage rows are
+                            not tied to a single render.
                         </p>
 
-                        <p v-if="!hasUsage" class="flex items-start gap-2 text-[12px] leading-relaxed text-pending">
-                            <TriangleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            No provider usage has been synced for this range yet.
-                        </p>
+                        <div v-if="!hasUsage" class="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12px] leading-relaxed text-pending">
+                            <TriangleAlert class="h-3.5 w-3.5 shrink-0" />
+                            <span>No provider usage has been synced for this range yet.</span>
+                            <button
+                                v-if="providerReady"
+                                type="button"
+                                class="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-pending/40 bg-pending/10 px-2.5 py-1 font-alt text-[10.5px] font-bold uppercase tracking-[0.1em] text-amber-700 transition hover:bg-pending/20 disabled:opacity-60 dark:text-amber-300"
+                                :disabled="syncing"
+                                @click="syncUsage"
+                            >
+                                <RefreshCw :class="['h-3 w-3', syncing ? 'animate-spin' : '']" />
+                                {{ syncing ? 'Syncing…' : 'Sync now' }}
+                            </button>
+                        </div>
 
                         <p
                             v-if="!providerReady"
