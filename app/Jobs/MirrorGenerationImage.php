@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Generation;
+use App\Services\Generations\ImageCaptionStripper;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
@@ -29,7 +30,7 @@ class MirrorGenerationImage implements ShouldQueue
 
     public function __construct(public int $generationId) {}
 
-    public function handle(): void
+    public function handle(ImageCaptionStripper $stripper): void
     {
         if (! config('lumora.generation.mirror_images', true)) {
             return;
@@ -71,7 +72,21 @@ class MirrorGenerationImage implements ShouldQueue
         }
 
         $disk = (string) config('lumora.generation.image_disk', 'public');
-        $path = 'generations/'.$generation->uuid.'.'.$this->extension($response->header('Content-Type'), $sourceUrl);
+        $extension = $this->extension($response->header('Content-Type'), $sourceUrl);
+        $captionsStripped = false;
+        $removeCaptions = (bool) ($generation->meta['remove_captions']
+            ?? config('lumora.generation.strip_captions', false));
+
+        if ($extension === 'png' && $removeCaptions) {
+            $clean = $stripper->strip($body);
+
+            if ($clean !== $body) {
+                $body = $clean;
+                $captionsStripped = true;
+            }
+        }
+
+        $path = 'generations/'.$generation->uuid.'.'.$extension;
 
         if (! Storage::disk($disk)->put($path, $body)) {
             throw new RuntimeException('The generation image could not be stored.');
@@ -80,6 +95,10 @@ class MirrorGenerationImage implements ShouldQueue
         $meta = $generation->meta ?? [];
         $meta['provider_image_url'] = $sourceUrl;
         $meta['image_mirrored_at'] = now()->toIso8601String();
+
+        if ($captionsStripped) {
+            $meta['captions_stripped_at'] = now()->toIso8601String();
+        }
 
         $generation->forceFill([
             'image_url' => $this->publicPath($disk, $path),
@@ -91,6 +110,7 @@ class MirrorGenerationImage implements ShouldQueue
             'generation' => $generation->uuid,
             'path' => $path,
             'bytes' => strlen($body),
+            'captions_stripped' => $captionsStripped,
         ]);
     }
 

@@ -50,7 +50,7 @@ const sections = [
                 type: 'code',
                 language: 'text',
                 code: `app/
-  Console/Commands/            lumora:poll-generations, lumora:expire-generations, lumora:reconcile-usage
+  Console/Commands/            lumora:poll-generations, lumora:expire-generations, lumora:reconcile-usage, lumora:strip-image-captions
   Http/Controllers/            pages, auth, billing, settings, webhooks, admin
   Http/Middleware/             Inertia shared props, admin gate
   Http/Requests/               validation for generations, purchases, profile, password
@@ -159,6 +159,7 @@ LUMORA_GENERATIONS_AFTER_RESPONSE=false`,
                     ['`LUMORA_GENERATIONS_AFTER_RESPONSE`', '`false`', 'When true, dispatch the submit job after the response instead of during the request. Useful on hosts without a worker during local debugging.'],
                     ['`LUMORA_MIRROR_IMAGES`', '`true`', 'Copy each finished render onto the app disk, because signed provider image URLs expire 24 hours after completion.'],
                     ['`LUMORA_IMAGE_DISK`', '`public`', 'Filesystem disk used for mirrored renders. Run `php artisan storage:link` so `/storage/generations` is publicly served.'],
+                    ['`LUMORA_STRIP_CAPTIONS`', '`false`', 'Default for renders without a stored preference. The studio checkbox (Remove provider caption) controls each render; when on, the prompt, generation id and quality are painted out of the mirrored PNG while the PIXELFORGE watermark is kept. Existing images can be cleaned with `php artisan lumora:strip-image-captions`.'],
                 ],
             },
             {
@@ -326,11 +327,11 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
             {
                 type: 'steps',
                 items: [
-                    { title: 'Validate', text: '`StoreGenerationRequest` trims the prompt, validates length, size, quality and up to two `http(s)` reference URLs.' },
+                    { title: 'Validate', text: '`StoreGenerationRequest` trims the prompt, validates length, size, quality, the per-render Remove provider caption choice and up to two `http(s)` reference URLs.' },
                     { title: 'Estimate and hold', text: '`GenerationService` calculates the provider rate plus markup, checks the balance and active-render limit, then writes a `hold` ledger row and a pending generation inside a transaction.' },
                     { title: 'Submit', text: '`SubmitGenerationJob` applies a provider rate limit, calls the create endpoint with an idempotency key and records the provider id. Client errors fail the job immediately and refund it; transient errors retry with backoff. A `404` on create is treated as transient too, because the provider also returns `not_found` while a resource propagates, and the idempotency key makes the retry safe. When the retries are exhausted the generation is failed and refunded.' },
                     { title: 'Process', text: 'The provider renders asynchronously. The UI polls the status endpoint while the scheduler queues fallback polls for in-progress generations.' },
-                    { title: 'Settle or fail', text: 'A webhook, a poll or a synchronous response calls `GenerationFinalizer`. Success computes actual provider cost, applies markup, settles the difference and stores the image. The provider URL is signed and expires after 24 hours, so `MirrorGenerationImage` copies the PNG onto our disk and keeps the original URL in `meta.provider_image_url`. Failure refunds the full hold and records a zero customer charge.' },
+                    { title: 'Settle or fail', text: 'A webhook, a poll or a synchronous response calls `GenerationFinalizer`. Success computes actual provider cost, applies markup, settles the difference and stores the image. The provider URL is signed and expires after 24 hours, so `MirrorGenerationImage` copies the PNG onto our disk and keeps the original URL in `meta.provider_image_url`; if the render was submitted with Remove provider caption checked, the caption is painted out during that copy. Failure refunds the full hold and records a zero customer charge.' },
                     { title: 'Expire stragglers', text: '`lumora:expire-generations` fails and refunds anything older than the configured stale window, so credits cannot be stuck forever.' },
                 ],
             },
@@ -421,7 +422,7 @@ curl -i -X POST http://localhost:8000/webhooks/pixelforge \\
             },
             {
                 type: 'paragraph',
-                text: 'Console commands are thin wrappers around services: `lumora:poll-generations` queues polls, `lumora:expire-generations` fails and refunds stale work, and `lumora:reconcile-usage {--days=2}` syncs usage and replays unmatched webhooks. They are scheduled in `routes/console.php`.',
+                text: 'Console commands are thin wrappers around services: `lumora:poll-generations` queues polls, `lumora:expire-generations` fails and refunds stale work, `lumora:reconcile-usage {--days=2}` syncs usage and replays unmatched webhooks, and `lumora:strip-image-captions` cleans renders mirrored before caption stripping existed while leaving renders whose studio choice was to keep the caption. The first three are scheduled in `routes/console.php`; the last is run on demand.',
             },
         ],
     },

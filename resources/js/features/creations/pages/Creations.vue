@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { Images, Search, Sparkles, X } from 'lucide-vue-next';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -23,6 +23,7 @@ const props = defineProps({
 
 const search = ref(props.filters.q ?? '');
 const loading = ref(false);
+const searchFocused = ref(false);
 
 const tabs = computed(() => [
     { key: 'all', label: 'All', count: props.counts.all },
@@ -41,6 +42,7 @@ const meta = computed(() => ({
 const selected = ref(null);
 
 let debounce = null;
+let syncingSearch = false;
 
 const applyFilters = (overrides = {}) => {
     router.get(
@@ -70,9 +72,30 @@ const setStatus = (status) => {
 };
 
 watch(search, () => {
+    if (syncingSearch) return;
+
     clearTimeout(debounce);
     debounce = setTimeout(() => applyFilters(), 350);
 });
+
+// The topbar search navigates in place; reflect its query without sending a
+// second request from the field on this page.
+watch(
+    () => props.filters.q,
+    (value) => {
+        if (searchFocused.value) return;
+
+        const next = typeof value === 'string' ? value : '';
+
+        if (next === search.value) return;
+
+        syncingSearch = true;
+        search.value = next;
+        nextTick(() => {
+            syncingSearch = false;
+        });
+    },
+);
 
 const clearSearch = () => {
     search.value = '';
@@ -92,6 +115,62 @@ const onDeleted = () => {
 };
 
 const isFiltered = computed(() => props.filters.status !== 'all' || Boolean(props.filters.q));
+
+const REFRESH_INTERVAL = 4000;
+
+let refreshTimer = null;
+let reloading = false;
+
+const syncSelected = () => {
+    if (!selected.value) return;
+
+    const fresh = items.value.find((item) => item.uuid === selected.value.uuid);
+
+    if (fresh) selected.value = fresh;
+};
+
+const refreshGallery = () => {
+    if (reloading || loading.value || searchFocused.value) return;
+
+    reloading = true;
+
+    router.reload({
+        only: ['generations', 'counts', 'activeCount'],
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: syncSelected,
+        onFinish: () => {
+            reloading = false;
+        },
+    });
+};
+
+const stopAutoRefresh = () => {
+    if (refreshTimer === null) return;
+
+    window.clearInterval(refreshTimer);
+    refreshTimer = null;
+};
+
+const startAutoRefresh = () => {
+    if (refreshTimer !== null) return;
+
+    refreshTimer = window.setInterval(refreshGallery, REFRESH_INTERVAL);
+};
+
+watch(
+    () => props.activeCount,
+    (count) => {
+        if (count > 0) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(stopAutoRefresh);
 </script>
 
 <template>
@@ -143,6 +222,8 @@ const isFiltered = computed(() => props.filters.status !== 'all' || Boolean(prop
                         placeholder="Search prompts…"
                         aria-label="Search creations"
                         size="sm"
+                        @focus="searchFocused = true"
+                        @blur="searchFocused = false"
                     >
                         <template #leading><Search class="h-3.5 w-3.5" /></template>
                         <template #trailing>
@@ -166,14 +247,14 @@ const isFiltered = computed(() => props.filters.status !== 'all' || Boolean(prop
                     <span class="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
                 </span>
                 <p class="text-[12px] font-medium text-ink">
-                    {{ activeCount }} {{ activeCount === 1 ? 'render' : 'renders' }} in progress — this page refreshes as they finish.
+                    {{ activeCount }} {{ activeCount === 1 ? 'render' : 'renders' }} in progress — refreshing automatically every few seconds.
                 </p>
                 <button
                     type="button"
                     class="focus-ring ml-auto rounded-lg px-2 py-1 font-alt text-[10px] font-bold uppercase tracking-[0.12em] text-brand-700 transition hover:bg-brand-500/10 dark:text-brand-300"
-                    @click="router.reload({ only: ['generations', 'counts', 'activeCount'] })"
+                    @click="refreshGallery"
                 >
-                    Refresh
+                    Refresh now
                 </button>
             </div>
 

@@ -37,6 +37,7 @@ class GenerationController extends Controller
                 'defaults' => [
                     'size' => config('lumora.generation.default_size'),
                     'quality' => config('lumora.generation.default_quality'),
+                    'remove_captions' => (bool) config('lumora.generation.strip_captions', false),
                 ],
             ],
             'pricing' => [

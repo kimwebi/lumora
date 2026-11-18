@@ -59,6 +59,7 @@ class GenerationFlowTest extends TestCase
         $this->assertSame($estimate->providerMicros, $generation->estimated_provider_cost_micros);
         $this->assertSame($estimate->totalMicros, $generation->estimated_user_charge_micros);
         $this->assertSame(2_500, $generation->markup_basis_points);
+        $this->assertFalse($generation->meta['remove_captions']);
 
         $this->assertSame(100_000 - $estimate->totalMicros, $user->fresh()->credit_balance_micros);
 
@@ -71,6 +72,23 @@ class GenerationFlowTest extends TestCase
         ]);
 
         Queue::assertPushed(SubmitGenerationJob::class);
+    }
+
+    #[Test]
+    public function the_caption_preference_is_stored_with_the_generation(): void
+    {
+        Queue::fake();
+
+        $user = $this->makeUser(1_000_000);
+
+        $this->actingAs($user)->post('/generations', [
+            'prompt' => 'A quiet lighthouse at dusk',
+            'size' => '1024x1024',
+            'quality' => 'medium',
+            'remove_captions' => true,
+        ])->assertRedirect(route('generate'));
+
+        $this->assertTrue(Generation::query()->firstOrFail()->meta['remove_captions']);
     }
 
     #[Test]

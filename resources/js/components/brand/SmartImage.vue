@@ -8,6 +8,7 @@ const props = defineProps({
     processing: { type: Boolean, default: false },
     ratio: { type: String, default: 'aspect-[4/3]' },
     rounded: { type: String, default: '' },
+    fit: { type: String, default: 'cover' },
 });
 
 const failed = ref(false);
@@ -17,6 +18,8 @@ watch(() => props.src, () => {
 });
 
 const showImage = computed(() => Boolean(props.src) && !failed.value);
+
+const objectFit = computed(() => (props.fit === 'contain' ? 'object-contain' : 'object-cover'));
 </script>
 
 <template>
@@ -27,7 +30,7 @@ const showImage = computed(() => Boolean(props.src) && !failed.value);
             :alt="alt"
             loading="lazy"
             decoding="async"
-            class="h-full w-full object-cover transition-transform duration-700 ease-out"
+            :class="['h-full w-full transition-transform duration-700 ease-out', objectFit]"
             @error="failed = true"
         />
 

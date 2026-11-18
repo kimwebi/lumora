@@ -65,6 +65,7 @@ class GenerationService
                 'meta' => [
                     'generation_uuid' => $uuid,
                     'requested_size' => Arr::get($data, 'size'),
+                    'remove_captions' => (bool) ($data['remove_captions'] ?? false),
                 ],
             ]);
 

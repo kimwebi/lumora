@@ -32,10 +32,43 @@ const markupPercent = computed(() => {
     return Math.round((estimated.markup_basis_points ?? 2500) / 100);
 });
 
-const download = () => {
-    if (!props.generation?.image_url) return;
+const downloadName = computed(() => {
+    const url = props.generation?.image_url ?? '';
+    const match = url.split('?')[0].match(/\.([a-z0-9]{2,5})$/i);
+    const extension = (match?.[1] ?? 'png').toLowerCase();
+    const safe = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension) ? extension : 'png';
 
-    window.open(props.generation.image_url, '_blank', 'noopener');
+    return `lumora-${props.generation?.uuid ?? 'render'}.${safe}`;
+});
+
+const download = async () => {
+    const url = props.generation?.image_url;
+
+    if (!url) return;
+
+    try {
+        const response = await fetch(url, { credentials: 'same-origin' });
+
+        if (!response.ok) {
+            throw new Error(`Download failed with status ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = objectUrl;
+        link.download = downloadName.value;
+        link.rel = 'noopener';
+        document.body.append(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+        // Cross-origin URLs cannot be saved with the download attribute; fall back
+        // to opening the original so the browser can handle it.
+        window.open(url, '_blank', 'noopener');
+    }
 };
 
 const remove = () => {
@@ -73,6 +106,7 @@ const remove = () => {
                     :processing="inFlight"
                     ratio="aspect-square"
                     rounded="rounded-2xl"
+                    fit="contain"
                 />
 
                 <div class="mt-4 grid grid-cols-2 gap-2">

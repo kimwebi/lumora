@@ -56,6 +56,8 @@ In a second terminal, run the queue worker:
 php artisan queue:work
 ```
 
+After changing job code, restart it (`php artisan queue:restart`, then start it again if it is not supervised). A long-running worker keeps the old code in memory, so a newly added image step can appear to be ignored.
+
 The scheduler drives polling, reconciliation and expiry:
 
 ```bash
@@ -120,6 +122,8 @@ The customer charge is always provider cost plus the configured markup (default 
 
 Because signed provider image URLs stop working 24 hours after completion, `MirrorGenerationImage` copies each finished render onto `LUMORA_IMAGE_DISK` (the `public` disk by default) and stores the original URL in `meta.provider_image_url`. Run `php artisan storage:link` so `/storage/generations` is served.
 
+Pixelforge is a simulated provider, so its placeholders have the prompt, generation id and quality drawn onto the artwork. Mirrored renders keep them by default, exactly as the provider made them. The studio has a **Remove provider caption** checkbox for each render; enabling it paints the caption out while mirroring and keeps only the PIXELFORGE watermark. `LUMORA_STRIP_CAPTIONS=true` sets the default for generations created without a stored preference. If you change the default after images are already mirrored, run `php artisan lumora:strip-image-captions` to clean the existing files.
+
 > **Before going live:** compare `PIXELFORGE_*` values against the official Pixelforge documentation and credentials you receive. If the provider uses a different path, header or signature scheme, change the environment values only — no code changes are required.
 
 ### Provider test keywords
@@ -180,7 +184,7 @@ Lumora needs a standard PHP host with a persistent database and a queue worker. 
    php artisan queue:work --tries=5 --timeout=120
    php artisan schedule:work
    ```
-   Use Supervisor (or your platform's worker feature) for the queue and a cron entry for `php artisan schedule:run` if you prefer cron over `schedule:work`.
+   Use Supervisor (or your platform's worker feature) for the queue and a cron entry for `php artisan schedule:run` if you prefer cron over `schedule:work`. Restart workers on every deploy (`php artisan queue:restart`) so they load the new code.
 5. **Point Pixelforge** at `https://your-domain.com/webhooks/pixelforge` and set `PIXELFORGE_WEBHOOK_SECRET` to the same secret.
 6. **Search engines**:
    - Confirm `https://your-domain.com/robots.txt` and `/sitemap.xml` resolve over HTTPS.

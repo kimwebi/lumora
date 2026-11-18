@@ -23,6 +23,7 @@ class StoreGenerationRequest extends FormRequest
         $this->merge([
             'prompt' => is_string($this->input('prompt')) ? trim($this->input('prompt')) : $this->input('prompt'),
             'reference_images' => $references,
+            'remove_captions' => $this->boolean('remove_captions'),
         ]);
     }
 
@@ -37,6 +38,7 @@ class StoreGenerationRequest extends FormRequest
             'quality' => ['required', 'string', Rule::in($qualities)],
             'reference_images' => ['nullable', 'array', 'max:2'],
             'reference_images.*' => ['nullable', 'string', 'url:http,https', 'max:2048'],
+            'remove_captions' => ['boolean'],
         ];
     }
 

@@ -12,6 +12,9 @@ defineEmits(['open']);
 
 const cost = (generation) =>
     generation.actual?.total_micros ?? generation.estimated?.total_micros ?? 0;
+
+const inFlight = (generation) =>
+    generation.status === 'pending' || generation.status === 'processing';
 </script>
 
 <template>
@@ -24,33 +27,32 @@ const cost = (generation) =>
         <SmartImage
             :src="generation.image_url"
             :alt="generation.prompt"
-            :processing="generation.status === 'pending' || generation.status === 'processing'"
+            :processing="inFlight(generation)"
             ratio="aspect-[4/3]"
+            fit="contain"
             class="rounded-none"
-        >
-            <div class="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
+        />
+
+        <div class="space-y-2.5 p-4">
+            <div class="flex items-center justify-between gap-2">
                 <StatusBadge :status="generation.status" size="sm" />
-                <span class="rounded-full border border-white/10 bg-midnight/60 px-2 py-1 font-alt text-[10px] font-semibold text-white backdrop-blur-md">
+                <span class="rounded-full border border-line bg-elevated px-2 py-1 font-alt text-[10px] font-semibold text-subtle">
                     {{ formatUsd(cost(generation), 3) }}
                 </span>
             </div>
 
-            <div
-                v-if="generation.status === 'processing' || generation.status === 'pending'"
-                class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-midnight/80 to-transparent p-3 pt-10"
-            >
-                <p class="font-alt text-[10px] font-semibold uppercase tracking-[0.18em] text-white/90">
-                    {{ statusFor(generation.status).description }}
-                </p>
-            </div>
-        </SmartImage>
-
-        <div class="space-y-3 p-4">
-            <p class="clamp-2 min-h-[2.6rem] text-[13.5px] font-medium leading-snug text-ink">
+            <p class="whitespace-pre-line text-[13.5px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">
                 {{ generation.prompt }}
             </p>
 
-            <div class="flex items-center justify-between gap-2 border-t border-line/70 pt-3">
+            <p
+                v-if="inFlight(generation)"
+                class="font-alt text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-700 dark:text-brand-300"
+            >
+                {{ statusFor(generation.status).description }}
+            </p>
+
+            <div class="flex items-center justify-between gap-2 border-t border-line/70 pt-2.5">
                 <div class="flex min-w-0 items-center gap-2 text-[11.5px] text-subtle">
                     <Clock3 class="h-3.5 w-3.5 shrink-0" />
                     <span class="truncate">{{ formatRelative(generation.created_at) }}</span>

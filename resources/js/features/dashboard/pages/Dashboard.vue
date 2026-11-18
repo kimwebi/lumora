@@ -238,6 +238,7 @@ const imageCount = computed(() => props.stats?.succeeded ?? 0);
                             :alt="current.prompt"
                             :processing="!current.is_terminal"
                             ratio="aspect-[16/10]"
+                            fit="contain"
                         />
 
                         <div class="space-y-3 p-4">

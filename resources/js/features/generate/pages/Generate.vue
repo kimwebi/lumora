@@ -47,6 +47,7 @@ const form = useForm({
     size: props.options.defaults.size,
     quality: props.options.defaults.quality,
     reference_images: [],
+    remove_captions: Boolean(props.options.defaults.remove_captions),
 });
 
 const prompts = [
@@ -144,7 +145,7 @@ const { start, stop } = useGenerationPolling(4000);
 watch(
     () => props.active,
     (value) => {
-        current.value = value;
+        if (value) current.value = value;
     },
 );
 
@@ -408,6 +409,26 @@ const visitActive = () => {
                             </div>
                         </Card>
                     </div>
+
+                    <Card padding="none">
+                        <label class="flex cursor-pointer select-none items-start gap-3 p-4 sm:p-5">
+                            <input
+                                v-model="form.remove_captions"
+                                type="checkbox"
+                                class="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-input text-brand-600 focus:ring-2 focus:ring-brand-500/40"
+                            />
+
+                            <span class="min-w-0">
+                                <span class="flex flex-wrap items-center gap-2">
+                                    <span class="text-[12.5px] font-semibold text-ink">Remove provider caption</span>
+                                    <Badge tone="neutral" size="sm">Optional</Badge>
+                                </span>
+                                <span class="mt-0.5 block text-[11px] leading-relaxed text-subtle">
+                                    Paint the prompt, generation id and quality out of this render. The PIXELFORGE watermark stays.
+                                </span>
+                            </span>
+                        </label>
+                    </Card>
                 </div>
 
                 <div class="space-y-4 lg:sticky lg:top-[88px] lg:self-start">
@@ -524,6 +545,7 @@ const visitActive = () => {
                             :alt="current.prompt"
                             :processing="!current.is_terminal"
                             ratio="aspect-[4/3]"
+                            fit="contain"
                         />
 
                         <div class="space-y-2 p-4">

@@ -49,6 +49,11 @@ final class Seo
                 'Lumora architecture, local setup, Pixelforge API keys, webhook signatures and the generation lifecycle for developers.',
                 true,
             ],
+            $path === '/code-explanation' => [
+                'Code Explanation — Lumora',
+                'Unlisted code reference for the Lumora codebase.',
+                false,
+            ],
             default => [
                 'Lumora Studio',
                 'Your Lumora workspace for AI image generation, credits and creative history.',

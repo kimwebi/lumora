@@ -101,6 +101,12 @@ return [
         'mirror_images' => (bool) env('LUMORA_MIRROR_IMAGES', true),
         'image_disk' => env('LUMORA_IMAGE_DISK', 'public'),
         'image_max_bytes' => 15 * 1024 * 1024,
+
+        // Pixelforge draws the prompt, generation id and quality onto every
+        // placeholder render. Those captions are kept by default; set
+        // LUMORA_STRIP_CAPTIONS=true to paint them out while mirroring and
+        // leave only the PIXELFORGE watermark.
+        'strip_captions' => (bool) env('LUMORA_STRIP_CAPTIONS', false),
     ],
 
     /*

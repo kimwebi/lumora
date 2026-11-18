@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\CodeExplanationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentationController;
 use App\Http\Controllers\GenerationController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\LandingController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\Webhooks\PixelforgeWebhookController;
+use App\Http\Middleware\PreventSearchIndexing;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -21,6 +23,7 @@ Route::get('/terms', fn () => Inertia::render('features/legal/pages/Terms'))->na
 Route::get('/privacy', fn () => Inertia::render('features/legal/pages/Privacy'))->name('privacy');
 Route::get('/guide', [DocumentationController::class, 'userGuide'])->name('guide');
 Route::get('/developer-guide', [DocumentationController::class, 'developerGuide'])->name('developer-guide');
+Route::get('/code-explanation', CodeExplanationController::class)->middleware(PreventSearchIndexing::class)->name('code-explanation');
 Route::redirect('/developer guide', '/developer-guide', 301);
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::get('/robots.txt', fn () => response(
