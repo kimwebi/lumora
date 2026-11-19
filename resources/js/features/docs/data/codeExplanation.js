@@ -248,6 +248,25 @@ export const sections = {
                     ],
                 },
                 {
+                    path: 'app/Http/Controllers/Admin/AdminImageController.php',
+                    lineCount: 104,
+                    role: 'Admin image audit page plus UUID-based upload and provider re-download actions for restoring lost renders.',
+                    details: [
+                        '`index()` reports the active storage driver and lists completed renders whose image is missing.',
+                        '`store()` matches filenames to generation UUIDs and calls `GenerationImageStore::restoreFile()`.',
+                        '`refetch()` reuses the original provider URL when it has not expired.',
+                    ],
+                },
+                {
+                    path: 'app/Http/Controllers/GenerationMediaController.php',
+                    lineCount: 42,
+                    role: 'Serves durable database-backed images from `/media/generations/{uuid}` with ETag and cache headers.',
+                    details: [
+                        'Decodes the base64 bytes stored in `generation_images` and never exposes the raw `data` column.',
+                        'Returns `304 Not Modified` when the checksum ETag matches, and sets `nosniff` on every binary response.',
+                    ],
+                },
+                {
                     path: 'app/Http/Controllers/DocumentationController.php',
                     lineCount: 15,
                     role: 'Renders the public User Guide and Developer Guide Inertia pages.',
@@ -423,6 +442,18 @@ export const sections = {
                         'Returns the original bytes when the image has no captions or GD cannot read it.',
                     ],
                 },
+                {
+                    path: 'app/Services/Images/GenerationImageStore.php',
+                    lineCount: 497,
+                    role: 'The single owner of image persistence. Chooses disk or database storage, mirrors provider images, restores recovered files and builds public URLs.',
+                    details: [
+                        'Production defaults to the `database` driver so images survive Render rebuilds; development keeps the fast `disk` driver.',
+                        '`mirror()`, `restoreFile()` and `restoreFromProvider()` all end in the same storage path, so local and recovered images behave identically.',
+                        '`exists()` checks the active driver, so missing-file audits do not report false positives after a deploy.',
+                        '`generationForFilename()` matches UUID filenames, including browser suffixes like `(1)`, to completed generations.',
+                        'Database rows are capped at 8 MB by default; disk files at 15 MB.',
+                    ],
+                },
             ],
         },
         {
@@ -494,13 +525,190 @@ export const sections = {
             entries: [
                 {
                     path: 'app/Services/Billing/CreditService.php',
-                    lineCount: 221,
-                    role: 'Lock, hold, settle, refund, purchase, grant, summary and the private ledger writer.',
-                    details: [
-                        '`record()` is idempotent per `(generation, type)`, rejects negative balances, and writes balance + ledger together.',
-                        'Settlement replaces the hold with the actual charge: negative difference refunds, positive difference debits (capped at balance, remainder recorded as `shortfall_micros`).',
-                        '`purchase()` and `grant()` are idempotent by unique `reference`.',
-                        '`summary()` reports balance, purchased, bonus, consumed (succeeded actual charges) and pending holds.',
+                    lineCount: 256,
+                    role: 'Lock, hold, settle, refund, purchase, grant, summary and the private ledger writer — every wallet mutation in the app.',
+                    blocks: [
+                        {
+                            type: 'paragraph',
+                            text: 'This is a Laravel service class (`CreditService`) that manages a user’s credit wallet. All balance changes go through it (inside DB transactions, per the class comment). The ledger (`CreditTransaction` rows) is the source of truth; the user’s `credit_balance_micros` field is kept in sync with it.',
+                        },
+                        {
+                            type: 'paragraph',
+                            text: 'One detail the class comment leaves out: the service does not open transactions itself. Its callers — `GenerationService`, `GenerationFinalizer`, `BillingController` and `RegisteredUserController` — wrap the work in `DB::transaction()` and pass a row locked with `lockUser()`, so concurrent requests cannot race on the balance.',
+                        },
+                        { type: 'subheading', title: 'Core ideas' },
+                        {
+                            type: 'list',
+                            items: [
+                                'Credits are stored in **micros** (millionths of a credit) for precision; `Money::creditsToMicros()` converts from whole credits.',
+                                'Negative amounts = debits (`hold`, `settlement`); positive amounts = credits (`purchase`, `refund`, `bonus`, `adjustment`).',
+                                'The balance is never allowed to go negative — `record()` throws before writing.',
+                                'Many operations are idempotent: they check for an existing transaction with the same `generation + type` or the same `reference` and return it instead of writing again.',
+                                'The balance update and the ledger row are written together; each row stores `balance_after_micros` so the ledger can be replayed.',
+                            ],
+                        },
+                        { type: 'subheading', title: 'Main public methods' },
+                        {
+                            type: 'table',
+                            head: ['Method', 'Purpose'],
+                            rows: [
+                                ['`lockUser($userId)`', 'Locks the user row with `SELECT … FOR UPDATE` so concurrent requests cannot race on the balance.'],
+                                ['`holdForGeneration($user, $generation)`', 'Reserves (holds) the estimated cost by creating a negative `TYPE_HOLD` transaction. Throws if the user does not have enough credits.'],
+                                [
+                                    '`settleGeneration($user, $generation, $actualChargeMicros)`',
+                                    'Reconciles the hold with the real charge: lower → refund the difference; higher → debit the extra (capped at the remaining balance, shortage reported as `shortfall_micros`); equal → zero-amount settlement for the audit trail. Returns `charged`, `adjustment`, `shortfall`.',
+                                ],
+                                ['`refundGeneration($user, $generation)`', 'If a generation fails, returns the previously held amount as a positive `TYPE_REFUND`. No hold → no-op.'],
+                                ['`purchase($user, $packageKey, $reference = null)`', 'Adds credits from `config("lumora.credits.packages")`. Idempotent by `reference`.'],
+                                ['`grant($user, $amountMicros, $type, $description, …)`', 'Manually grants credits; only `TYPE_BONUS` or `TYPE_ADJUSTMENT` are allowed. Idempotent by `reference` when one is supplied.'],
+                                ['`holdFor($generation)`', 'Finds the existing `TYPE_HOLD` transaction for a generation (or `null`). Used by settle and refund.'],
+                                ['`summary($user)`', 'Snapshot: current balance, total purchased, bonuses, consumed by successful generations, and currently pending (held) amounts.'],
+                            ],
+                        },
+                        { type: 'subheading', title: 'Settlement in detail' },
+                        {
+                            type: 'steps',
+                            items: [
+                                {
+                                    title: 'Actual charge is lower than the hold',
+                                    text: 'The difference is credited back as a `TYPE_SETTLEMENT` row with a positive amount (`-adjustment`). The hold itself stays in the ledger as the record of what was reserved.',
+                                },
+                                {
+                                    title: 'Actual charge is higher than the hold',
+                                    text: 'The shortfall between hold and actual is debited, but capped at the current balance. Anything the wallet cannot cover is recorded in `meta.shortfall_micros` and returned to the caller — the balance still never goes negative.',
+                                },
+                                {
+                                    title: 'Actual charge equals the hold',
+                                    text: 'A zero-amount `TYPE_SETTLEMENT` row is written so every generation has a complete hold → settle audit trail.',
+                                },
+                            ],
+                        },
+                        { type: 'subheading', title: 'The private `record()` method (the real workhorse)' },
+                        {
+                            type: 'list',
+                            ordered: true,
+                            items: [
+                                'If a generation is supplied, look for an existing transaction with that `generation_id` and `type` and return it — this is what makes hold/settle/refund safe to retry.',
+                                'Calculate the next balance and throw `Credit balance cannot become negative.` if it would dip below zero.',
+                                'Update `user.credit_balance_micros` and save the user.',
+                                'Create a `CreditTransaction` row with a UUID, user/generation IDs, type, signed amount, `balance_after_micros`, and optional `reference`, `description` and `meta`.',
+                            ],
+                        },
+                        {
+                            type: 'callout',
+                            tone: 'info',
+                            title: 'Database backstop already exists',
+                            text: '`2026_11_18_000003_create_credit_transactions_table.php` declares `unique(reference)` **and** `unique(generation_id, type)`. The application-level early returns give clean idempotent results; the constraints close the race window if two transactions slip past the checks.',
+                        },
+                        { type: 'subheading', title: 'Typical flow for a generation' },
+                        {
+                            type: 'steps',
+                            items: [
+                                { title: '`holdForGeneration()` reserves the estimate', text: 'Money is moved out of the available balance before the provider job starts, so the user cannot spend the same credits twice.' },
+                                { title: 'The generation runs', text: 'Polling or a webhook reports success or failure; `GenerationFinalizer` calls back into the service inside a transaction.' },
+                                { title: 'On success: `settleGeneration()`', text: 'The hold is adjusted to the real provider-backed charge, including refund or capped shortfall.' },
+                                { title: 'On failure: `refundGeneration()`', text: 'The held credits go back to the wallet; failed renders never cost the user anything.' },
+                            ],
+                        },
+                        {
+                            type: 'paragraph',
+                            text: 'This is a solid, conservative wallet implementation designed to keep the ledger consistent and prevent overspending. The trade-off is that the caller must remember the transaction + row lock; the service assumes that contract rather than enforcing it.',
+                        },
+                        { type: 'subheading', title: 'The exact idempotency implementations' },
+                        {
+                            type: 'paragraph',
+                            text: '**1. Purchase by reference (strongest explicit key).** The caller can supply a stable reference; if a transaction with that reference exists, it is returned and nothing else happens.',
+                        },
+                        {
+                            type: 'code',
+                            language: 'php',
+                            code: `public function purchase(User $user, string $packageKey, ?string $reference = null): CreditTransaction
+{
+    // ...
+    $reference ??= 'purchase_'.Str::uuid();
+    $existing = CreditTransaction::query()->where('reference', $reference)->first();
+
+    if ($existing) {
+        return $existing;   // Same reference = same transaction.
+    }
+    // ... proceeds to record() only if no existing row
+}`,
+                        },
+                        {
+                            type: 'paragraph',
+                            text: '**2. Grant by reference (same pattern).** Identical idea, but only active when the caller passes a reference — useful for welcome bonuses and admin adjustments replayed by a job.',
+                        },
+                        {
+                            type: 'code',
+                            language: 'php',
+                            code: `public function grant(User $user, int $amountMicros, string $type, string $description, ?string $reference = null, array $meta = []): CreditTransaction
+{
+    // ...
+    if ($reference) {
+        $existing = CreditTransaction::query()->where('reference', $reference)->first();
+
+        if ($existing) {
+            return $existing;   // Idempotent when a reference is provided.
+        }
+    }
+    // ...
+}`,
+                        },
+                        {
+                            type: 'paragraph',
+                            text: '**3. Per-generation + type uniqueness inside `record()`.** The most important protection for the generation lifecycle: one `HOLD`, one `SETTLEMENT` and one `REFUND` per generation, ever.',
+                        },
+                        {
+                            type: 'code',
+                            language: 'php',
+                            code: `private function record(/* ... */): CreditTransaction
+{
+    if ($generation !== null) {
+        $existing = CreditTransaction::query()
+            ->where('generation_id', $generation->id)
+            ->where('type', $type)
+            ->first();
+
+        if ($existing) {
+            return $existing;   // Prevents duplicate HOLD / SETTLEMENT / REFUND rows.
+        }
+    }
+    // ... then update the balance and create the row
+}`,
+                        },
+                        {
+                            type: 'paragraph',
+                            text: '**4. `holdFor()` enables the above.** `settleGeneration()` and `refundGeneration()` look up the prior hold through it; combined with the check in `record()`, the whole hold → settle/refund flow can be replayed safely.',
+                        },
+                        {
+                            type: 'code',
+                            language: 'php',
+                            code: `public function holdFor(Generation $generation): ?CreditTransaction
+{
+    return CreditTransaction::query()
+        ->where('generation_id', $generation->id)
+        ->where('type', CreditTransaction::TYPE_HOLD)
+        ->first();
+}`,
+                        },
+                        { type: 'subheading', title: 'Summary of the idempotency surface' },
+                        {
+                            type: 'table',
+                            head: ['Method / location', 'Idempotency key used', 'What it protects against'],
+                            rows: [
+                                ['`purchase()`', '`reference`', 'Double-crediting the same purchase.'],
+                                ['`grant()`', '`reference` (optional)', 'Double-granting bonuses or adjustments.'],
+                                ['`record()`', '`generation_id` + `type`', 'Duplicate HOLD / SETTLEMENT / REFUND rows.'],
+                                ['`holdFor()` + settle/refund', 'Existing HOLD row', 'Re-settling or re-refunding the same generation.'],
+                                ['Database constraints', '`unique(reference)`, `unique(generation_id, type)`', 'Concurrent writes that pass the application-level checks.'],
+                            ],
+                        },
+                        {
+                            type: 'callout',
+                            tone: 'tip',
+                            title: 'One correction to the usual caveat',
+                            text: 'A common review note says you “would typically also want a unique database constraint on `(reference)` and `(generation_id, type)`”. Lumora already has both in the credit_transactions migration, so the query-then-return pattern is backed by the database, not just application code.',
+                        },
                     ],
                 },
             ],
@@ -617,12 +825,24 @@ export const sections = {
                     lineCount: 80,
                     role: '`lumora:strip-image-captions` — cleans opted-in renders and legacy rows covered by the configured default, including soft-deleted rows, while respecting an explicit per-render keep.',
                 },
+                {
+                    path: 'app/Console/Commands/VerifyGenerationImagesCommand.php',
+                    lineCount: 75,
+                    role: '`lumora:verify-images {--json}` — audits completed renders and reports any whose stored image is missing for the active driver.',
+                    details: ['`--json` emits driver, disk, missing count and UUID/filename pairs for automation.'],
+                },
+                {
+                    path: 'app/Console/Commands/RestoreGenerationImagesCommand.php',
+                    lineCount: 103,
+                    role: '`lumora:restore-images {path} {--dry-run}` — matches recovered image files to generation UUIDs and writes them through `GenerationImageStore`.',
+                    details: ['`--dry-run` prints matches without writing; production restores normally use the admin upload page instead.'],
+                },
             ],
         },
         {
             id: 'models',
             title: 'Models',
-            summary: 'Five Eloquent models. Soft-deleted generations stay in admin history; ledger and event tables are append-only.',
+            summary: 'Six Eloquent models. Soft-deleted generations stay in admin history; ledger and event tables are append-only; image bytes live in a dedicated durable model.',
             entries: [
                 {
                     path: 'app/Models/User.php',
@@ -657,6 +877,15 @@ export const sections = {
                     lineCount: 35,
                     role: 'Reconciled usage rows keyed by provider usage id, with tokens, cost and optional generation link.',
                 },
+                {
+                    path: 'app/Models/GenerationImage.php',
+                    lineCount: 42,
+                    role: 'Durable copy of a finished render: mime, extension, byte count, checksum and base64 bytes, linked one-to-one to a generation.',
+                    details: [
+                        'The `data` column is hidden from serialisation so Inertia/API payloads never leak the encoded image.',
+                        'A unique `generation_id` means a render has exactly one durable copy.',
+                    ],
+                },
             ],
         },
         {
@@ -686,6 +915,11 @@ export const sections = {
                     lineCount: 100,
                     role: 'Path → title/description/indexable map, canonical URL, OG/Twitter defaults and JSON-LD.',
                     details: ['Unlisted pages fall through to `noindex, nofollow` and no JSON-LD.'],
+                },
+                {
+                    path: 'app/Traits/ (none yet)',
+                    role: 'Lumora has no project-owned traits. Reusable behaviour lives in Laravel/Eloquent traits (`SoftDeletes`, `HasFactory`, `InteractsWithQueue`) and in the service classes listed above.',
+                    details: ['Add an entry here if a shared trait is introduced so this map stays complete.'],
                 },
             ],
         },
@@ -819,6 +1053,7 @@ export const sections = {
                 { path: 'resources/js/features/settings/pages/Settings.vue', lineCount: 308, role: 'Profile, password, account stats and danger-zone deletion, each as its own form.' },
                 { path: 'resources/js/features/admin/pages/AdminDashboard.vue', lineCount: 435, role: 'KPI cards, range selector, trend chart, provider reconciliation with manual sync, per-user spend table, recent generations.' },
                 { path: 'resources/js/features/admin/pages/AdminReports.vue', lineCount: 557, role: 'Operator report: range selector, provider sync, summary cards, reconciliation, daily and per-user tables, PDF/Excel/PNG downloads.' },
+                { path: 'resources/js/features/admin/pages/AdminImages.vue', lineCount: 337, role: 'Admin image restore console: storage mode, missing-image list, multi-file UUID upload, per-row provider re-download and copy helpers.' },
                 { path: 'resources/js/features/docs/pages/UserGuide.vue', lineCount: 343, role: 'Public user guide (getting started, credits, studio, gallery, account, FAQ).' },
                 { path: 'resources/js/features/docs/pages/DeveloperGuide.vue', lineCount: 622, role: 'Public developer guide: architecture, setup, provider API, webhooks, pricing, jobs, deployment.' },
                 { path: 'resources/js/features/legal/pages/Terms.vue', lineCount: 49, role: 'Terms page; content rendered through `LegalPage`.' },
@@ -981,6 +1216,12 @@ export const sections = {
                     lineCount: 28,
                     role: 'Reconciled provider usage: unique usage id, provider generation link, token buckets, cost, occurred_at, raw JSON.',
                 },
+                {
+                    path: 'database/migrations/2026_11_19_000001_create_generation_images_table.php',
+                    lineCount: 28,
+                    role: 'Durable image bytes: one unique `generation_id`, mime/extension/bytes/checksum and base64 `data` for hosts without persistent disks.',
+                    details: ['Deleting a generation cascades to its stored image, so removed creations do not leave orphaned bytes.'],
+                },
             ],
         },
         {
@@ -994,8 +1235,8 @@ export const sections = {
                 {
                     path: 'database/seeders/AdminUserSeeder.php',
                     lineCount: 23,
-                    role: 'Creates or refreshes the admin account from `LUMORA_ADMIN_NAME`, `LUMORA_ADMIN_EMAIL` and `LUMORA_ADMIN_PASSWORD`.',
-                    details: ['Safe to re-run; the password is reset to the configured value.', 'The operator starts with zero credits.'],
+                    role: 'Creates the admin account on first boot and preserves its name/password on later deploys unless `LUMORA_ADMIN_RESET_PASSWORD=true`.',
+                    details: ['Safe to re-run; it never overwrites operator data changed in the app by accident.', 'The operator starts with zero credits.'],
                 },
                 {
                     path: 'database/seeders/DemoDataSeeder.php',
@@ -1025,8 +1266,12 @@ export const sections = {
                 },
                 {
                     path: 'generation',
-                    role: 'Active limit, poll interval/attempts, stale timeout, `after_response`, allowed canvases, qualities, defaults, mirroring settings.',
-                    details: ['Canvas values must match the provider exactly: 1024x1024, 1024x1536, 1536x1024.'],
+                    role: 'Active limit, poll interval/attempts, stale timeout, `after_response`, allowed canvases, qualities, defaults, mirroring and durable image storage settings.',
+                    details: [
+                        'Canvas values must match the provider exactly: 1024x1024, 1024x1536, 1536x1024.',
+                        '`image_store` defaults to `database` in production and `disk` elsewhere; `LUMORA_IMAGE_STORE=disk` on Render would reintroduce disappearing images.',
+                        '`image_database_max_bytes` caps database-backed bytes at 8 MB by default.',
+                    ],
                 },
                 {
                     path: 'provider',

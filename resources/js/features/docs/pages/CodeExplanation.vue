@@ -18,8 +18,10 @@ import {
 import Logo from '@/components/brand/Logo.vue';
 import ThemeToggle from '@/components/brand/ThemeToggle.vue';
 import ToastHost from '@/components/ui/ToastHost.vue';
+import DocBlocks from '@/features/docs/components/DocBlocks.vue';
 import RichText from '@/features/docs/components/RichText.vue';
 import { sections as content, tabs } from '@/features/docs/data/codeExplanation';
+import { publicApi } from '@/features/docs/data/codeExplanationApi';
 import { useClipboard } from '@/composables/useClipboard';
 import { useSeo } from '@/composables/useSeo';
 import { routes } from '@/lib/routes';
@@ -50,6 +52,117 @@ const normalise = (value) => String(value ?? '').toLowerCase();
 
 const matches = (haystack, needle) => normalise(haystack).includes(needle);
 
+const cleanSignature = (signature) =>
+    String(signature ?? '')
+        .replace(/^function\s+/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const stepText = (step) =>
+    typeof step === 'string' ? step : [step?.title, step?.text, step?.description].filter(Boolean).join(' — ');
+
+const stepBlock = (step, index) =>
+    typeof step === 'string' ? { title: `Step ${index + 1}`, text: step } : step;
+
+/**
+ * Build the same CreditService-style explanation for every entry. Entries can
+ * still supply their own `blocks` when they need hand-written snippets; the
+ * rest are expanded from their role, details, steps and generated public API.
+ */
+const blocksFor = (entry) => {
+    if (entry.blocks?.length) return entry.blocks;
+
+    const details = entry.details ?? [];
+    const steps = entry.steps ?? [];
+    const ideas = details.length
+        ? details
+        : steps.length
+            ? steps.map(stepText)
+            : [`Its job is: ${entry.role}`];
+
+    const apiRows = publicApi[entry.path] ?? [];
+    const surfaceRows = apiRows.length
+        ? apiRows.map(([signature, purpose]) => {
+              const name = String(signature).match(/function\s+(\w+)/)?.[1];
+              const documented = name
+                  ? details.find((detail) =>
+                        detail.includes(`\`${name}(`) || detail.includes(`${name}()`),
+                    )
+                  : null;
+
+              return [cleanSignature(signature), documented ?? purpose];
+          })
+        : ideas.map((text, index) => [`${index + 1}`, text]);
+
+    const isPhp = entry.path.endsWith('.php') && apiRows.length > 0;
+    const blocks = [
+        { type: 'subheading', title: 'Core ideas' },
+        { type: 'list', items: ideas },
+    ];
+
+    if (surfaceRows.length) {
+        blocks.push(
+            { type: 'subheading', title: isPhp ? 'Main public methods' : 'Main surface' },
+            {
+                type: 'table',
+                head: isPhp ? ['Method', 'Purpose'] : ['Area', 'What it does'],
+                rows: surfaceRows,
+            },
+        );
+    }
+
+    if (steps.length) {
+        blocks.push(
+            { type: 'subheading', title: 'How it works' },
+            { type: 'steps', items: steps.map(stepBlock) },
+        );
+    }
+
+    blocks.push(
+        { type: 'subheading', title: 'Summary' },
+        { type: 'paragraph', text: entry.summaryText ?? `In short: ${entry.role}` },
+    );
+
+    return blocks;
+};
+
+/**
+ * Flatten every textual field so search behaves the same for hand-written and
+ * generated explanations.
+ */
+const blockText = (block) => {
+    if (!block || typeof block !== 'object') return String(block ?? '');
+
+    return [
+        block.text,
+        block.title,
+        block.code,
+        block.language,
+        ...(block.head ?? []),
+        ...(block.items ?? []).map((item) =>
+            typeof item === 'string'
+                ? item
+                : [item.term, item.title, item.text, item.description].filter(Boolean).join(' '),
+        ),
+        ...(block.rows ?? []).map((row) => (Array.isArray(row) ? row : [row]).join(' ')),
+    ]
+        .filter(Boolean)
+        .join(' ');
+};
+
+const searchableText = (entry) =>
+    [
+        entry.path,
+        entry.role,
+        ...(entry.details ?? []),
+        ...(entry.steps ?? []).map((step) =>
+            typeof step === 'string' ? step : [step.title, step.text].filter(Boolean).join(' '),
+        ),
+        ...blocksFor(entry).map(blockText),
+    ]
+        .filter(Boolean)
+        .join(' ');
+
 const searching = computed(() => query.value.trim().length > 0);
 const needle = computed(() => normalise(query.value.trim()));
 
@@ -72,12 +185,7 @@ const visibleSections = computed(() => {
 
             const visibleEntries = sectionMatches
                 ? section.entries
-                : section.entries.filter((entry) =>
-                      matches(
-                          [entry.path, entry.role, ...(entry.details ?? []), ...(entry.steps ?? [])].join(' '),
-                          needle.value,
-                      ),
-                  );
+                : section.entries.filter((entry) => matches(searchableText(entry), needle.value));
 
             return { ...section, visibleEntries };
         })
@@ -389,25 +497,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                                     class="mt-1.5 text-[12.5px] leading-relaxed text-subtle [overflow-wrap:anywhere]"
                                 />
 
-                                <ul v-if="entry.details?.length" class="mt-2.5 space-y-1.5 border-l border-brand-500/25 pl-3">
-                                    <RichText
-                                        v-for="(detail, index) in entry.details"
-                                        :key="index"
-                                        tag="li"
-                                        :text="detail"
-                                        class="text-[12px] leading-relaxed text-subtle [overflow-wrap:anywhere]"
-                                    />
-                                </ul>
-
-                                <ol v-if="entry.steps?.length" class="mt-3 list-decimal space-y-2 pl-5 marker:font-alt marker:text-[11px] marker:text-brand-600 dark:marker:text-brand-300">
-                                    <RichText
-                                        v-for="(step, index) in entry.steps"
-                                        :key="index"
-                                        tag="li"
-                                        :text="step"
-                                        class="pl-1 text-[12px] leading-relaxed text-subtle [overflow-wrap:anywhere]"
-                                    />
-                                </ol>
+                                <div class="mt-4 border-t border-line/70 pt-4">
+                                    <DocBlocks :blocks="blocksFor(entry)" />
+                                </div>
                             </li>
                         </ul>
                     </div>
