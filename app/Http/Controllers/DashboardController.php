@@ -27,7 +27,7 @@ class DashboardController extends Controller
 
         $recent = GenerationResource::collection(
             $user->generations()->latest()->limit(6)->get()
-        );
+        )->resolve();
 
         $active = $user->generations()
             ->processing()

@@ -34,7 +34,7 @@ class AdminUserSeederTest extends TestCase
     }
 
     #[Test]
-    public function it_resets_the_existing_administrator_password_without_creating_a_duplicate(): void
+    public function it_keeps_an_existing_administrator_password_and_name(): void
     {
         config([
             'lumora.admin.name' => 'Ops Lead',
@@ -43,10 +43,40 @@ class AdminUserSeederTest extends TestCase
         ]);
         $this->seed(AdminUserSeeder::class);
 
-        config(['lumora.admin.password' => 'second-password']);
+        User::query()->where('email', 'admin@lumora.com')->firstOrFail()->forceFill([
+            'name' => 'Renamed Admin',
+            'password' => Hash::make('changed-in-app'),
+        ])->save();
+
+        config([
+            'lumora.admin.name' => 'Ops Lead',
+            'lumora.admin.password' => 'deploy-password',
+        ]);
         $this->seed(AdminUserSeeder::class);
 
         $this->assertSame(1, User::query()->where('email', 'admin@lumora.com')->count());
+
+        $admin = User::query()->where('email', 'admin@lumora.com')->firstOrFail();
+        $this->assertSame('Renamed Admin', $admin->name);
+        $this->assertTrue(Hash::check('changed-in-app', $admin->password));
+        $this->assertFalse(Hash::check('deploy-password', $admin->password));
+        $this->assertTrue($admin->is_admin);
+    }
+
+    #[Test]
+    public function it_can_force_the_configured_password_when_asked(): void
+    {
+        config([
+            'lumora.admin.email' => 'admin@lumora.com',
+            'lumora.admin.password' => 'first-password',
+        ]);
+        $this->seed(AdminUserSeeder::class);
+
+        config([
+            'lumora.admin.password' => 'second-password',
+            'lumora.admin.reset_password' => true,
+        ]);
+        $this->seed(AdminUserSeeder::class);
 
         $admin = User::query()->where('email', 'admin@lumora.com')->firstOrFail();
         $this->assertTrue(Hash::check('second-password', $admin->password));

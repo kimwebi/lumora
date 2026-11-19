@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminImageController;
 use App\Http\Controllers\Admin\AdminReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\NewPasswordController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\CodeExplanationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentationController;
 use App\Http\Controllers\GenerationController;
+use App\Http\Controllers\GenerationMediaController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SitemapController;
@@ -25,6 +27,7 @@ Route::get('/privacy', fn () => Inertia::render('features/legal/pages/Privacy'))
 Route::get('/guide', [DocumentationController::class, 'userGuide'])->name('guide');
 Route::get('/developer-guide', [DocumentationController::class, 'developerGuide'])->name('developer-guide');
 Route::get('/code-explanation', CodeExplanationController::class)->middleware(PreventSearchIndexing::class)->name('code-explanation');
+Route::get('/media/generations/{generation}', GenerationMediaController::class)->name('media.generation');
 Route::redirect('/developer guide', '/developer-guide', 301);
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::get('/robots.txt', fn () => response(
@@ -77,27 +80,12 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/reports/export/{format}', [AdminReportController::class, 'export'])
         ->whereIn('format', ['pdf', 'xlsx', 'png'])
         ->name('reports.export');
+
+    Route::get('/images', [AdminImageController::class, 'index'])->name('images');
+    Route::post('/images', [AdminImageController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('images.store');
+    Route::post('/images/{generation}/refetch', [AdminImageController::class, 'refetch'])
+        ->middleware('throttle:30,1')
+        ->name('images.refetch');
 });
-
-
-use Illuminate\Support\Facades\Storage;
-use App\Models\Generation;
-
-Route::get('/lumora-diagnostic', function () {
-    return response()->json([
-
-        // Keep your existing diagnostic information here.
-
-        'generations' => \App\Models\Generation::withTrashed()
-            ->where('status', 'succeeded')
-            ->get()
-            ->map(fn ($generation) => [
-                'uuid' => $generation->uuid,
-                'provider_generation_id' => $generation->provider_generation_id,
-                'image_url' => $generation->image_url,
-                'provider_image_url' => $generation->meta['provider_image_url'] ?? null,
-                'image_mirrored_at' => $generation->meta['image_mirrored_at'] ?? null,
-            ]),
-
-    ]);
-})->middleware('auth');

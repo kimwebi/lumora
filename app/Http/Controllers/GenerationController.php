@@ -128,6 +128,7 @@ class GenerationController extends Controller
         }
 
         $generation->delete();
+        $generation->image()->delete();
 
         return back()->with('success', 'Creation removed from your gallery.');
     }

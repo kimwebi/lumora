@@ -22,6 +22,8 @@ export const routes = {
     adminReconcile: '/admin/reconcile',
     adminReports: '/admin/reports',
     adminReportsSync: '/admin/reports/sync',
+    adminImages: '/admin/images',
+    adminImagesStore: '/admin/images',
     terms: '/terms',
     privacy: '/privacy',
     guide: '/guide',
@@ -38,4 +40,8 @@ export function generationUrl(uuid) {
 
 export function adminReportExportUrl(format, days) {
     return `${routes.adminReports}/export/${format}?days=${encodeURIComponent(days)}`;
+}
+
+export function adminImageRefetchUrl(uuid) {
+    return `${routes.adminImages}/${encodeURIComponent(uuid)}/refetch`;
 }

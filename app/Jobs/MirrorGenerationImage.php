@@ -4,11 +4,11 @@ namespace App\Jobs;
 
 use App\Models\Generation;
 use App\Services\Generations\ImageCaptionStripper;
+use App\Services\Images\GenerationImageStore;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -16,6 +16,10 @@ use Throwable;
  * Pixelforge image URLs are signed and stop working 24 hours after the render
  * completes. Copy each finished render onto the app's own disk so galleries and
  * detail pages keep working, and keep the provider URL for audit only.
+ *
+ * The job also doubles as a repair step: when the stored file has gone missing
+ * (for example after a container redeploy) it retries from the provider URL if
+ * one is still valid.
  */
 class MirrorGenerationImage implements ShouldQueue
 {
@@ -30,7 +34,7 @@ class MirrorGenerationImage implements ShouldQueue
 
     public function __construct(public int $generationId) {}
 
-    public function handle(ImageCaptionStripper $stripper): void
+    public function handle(ImageCaptionStripper $stripper, GenerationImageStore $store): void
     {
         if (! config('lumora.generation.mirror_images', true)) {
             return;
@@ -44,7 +48,23 @@ class MirrorGenerationImage implements ShouldQueue
 
         $sourceUrl = $generation->image_url;
 
-        if (! is_string($sourceUrl) || $sourceUrl === '' || $this->isStoredUrl($sourceUrl)) {
+        if ($store->usesStoredImage($generation)) {
+            if ($store->exists($generation)) {
+                return;
+            }
+
+            $sourceUrl = $generation->meta['provider_image_url'] ?? null;
+
+            if (! is_string($sourceUrl) || $sourceUrl === '') {
+                Log::warning('Stored generation image is missing and no provider URL is recorded', [
+                    'generation' => $generation->uuid,
+                ]);
+
+                return;
+            }
+        }
+
+        if (! is_string($sourceUrl) || $sourceUrl === '') {
             return;
         }
 
@@ -65,14 +85,12 @@ class MirrorGenerationImage implements ShouldQueue
         }
 
         $body = $response->body();
-        $maxBytes = (int) config('lumora.generation.image_max_bytes', 15 * 1024 * 1024);
 
-        if ($body === '' || strlen($body) > $maxBytes) {
+        if ($body === '' || strlen($body) > $store->maxBytes()) {
             throw new RuntimeException('Image download was empty or larger than the allowed size.');
         }
 
-        $disk = (string) config('lumora.generation.image_disk', 'public');
-        $extension = $this->extension($response->header('Content-Type'), $sourceUrl);
+        $extension = $store->extension($response->header('Content-Type'), $sourceUrl, $body);
         $captionsStripped = false;
         $removeCaptions = (bool) ($generation->meta['remove_captions']
             ?? config('lumora.generation.strip_captions', false));
@@ -86,25 +104,16 @@ class MirrorGenerationImage implements ShouldQueue
             }
         }
 
-        $path = 'generations/'.$generation->uuid.'.'.$extension;
-
-        if (! Storage::disk($disk)->put($path, $body)) {
-            throw new RuntimeException('The generation image could not be stored.');
-        }
-
-        $meta = $generation->meta ?? [];
-        $meta['provider_image_url'] = $sourceUrl;
-        $meta['image_mirrored_at'] = now()->toIso8601String();
+        $meta = [
+            'provider_image_url' => $sourceUrl,
+            'image_source' => 'provider',
+        ];
 
         if ($captionsStripped) {
             $meta['captions_stripped_at'] = now()->toIso8601String();
         }
 
-        $generation->forceFill([
-            'image_url' => $this->publicPath($disk, $path),
-            'thumbnail_url' => $this->publicPath($disk, $path),
-            'meta' => $meta,
-        ])->save();
+        $path = $store->store($generation, $body, $extension, $meta);
 
         Log::info('Generation image mirrored locally', [
             'generation' => $generation->uuid,
@@ -120,40 +129,5 @@ class MirrorGenerationImage implements ShouldQueue
             'generation_id' => $this->generationId,
             'message' => $exception?->getMessage(),
         ]);
-    }
-
-    private function isStoredUrl(string $url): bool
-    {
-        return str_starts_with($url, '/storage/')
-            || str_starts_with($url, 'storage/');
-    }
-
-    private function publicPath(string $disk, string $path): string
-    {
-        $url = Storage::disk($disk)->url($path);
-        $urlPath = parse_url($url, PHP_URL_PATH);
-
-        return is_string($urlPath) && $urlPath !== '' ? $urlPath : '/storage/'.$path;
-    }
-
-    private function extension(?string $contentType, string $sourceUrl): string
-    {
-        $map = [
-            'image/png' => 'png',
-            'image/jpeg' => 'jpg',
-            'image/jpg' => 'jpg',
-            'image/webp' => 'webp',
-            'image/gif' => 'gif',
-        ];
-
-        $type = strtolower(trim(explode(';', (string) $contentType)[0]));
-
-        if (isset($map[$type])) {
-            return $map[$type];
-        }
-
-        $extension = strtolower(pathinfo((string) parse_url($sourceUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
-
-        return in_array($extension, ['png', 'jpg', 'jpeg', 'webp', 'gif'], true) ? $extension : 'png';
     }
 }

@@ -123,7 +123,9 @@ Actual provider cost resolution order:
 
 The customer charge is always provider cost plus the configured markup (default `2500` basis points = 25%), rounded up.
 
-Because signed provider image URLs stop working 24 hours after completion, `MirrorGenerationImage` copies each finished render onto `LUMORA_IMAGE_DISK` (the `public` disk by default) and stores the original URL in `meta.provider_image_url`. Run `php artisan storage:link` so `/storage/generations` is served.
+Because signed provider image URLs stop working 24 hours after completion, `MirrorGenerationImage` copies each finished render into storage Lumora controls and keeps the original URL in `meta.provider_image_url`. In production the default driver keeps the bytes in the database (`/media/generations/{uuid}`); locally they are written to the `public` disk and served through `/storage/generations`, which needs `php artisan storage:link`.
+
+Images are the one piece of state that used to live only on the filesystem. Container hosts such as Render replace that filesystem on every deploy (and on restart, on the free plan), so production stores renders in the database by default — see [Image storage](#image-storage). Otherwise the generation rows survive a redeploy while their image files disappear.
 
 Pixelforge is a simulated provider, so its placeholders have the prompt, generation id and quality drawn onto the artwork. Mirrored renders keep them by default, exactly as the provider made them. The studio has a **Remove provider caption** checkbox for each render; enabling it paints the caption out while mirroring and keeps only the PIXELFORGE watermark. `LUMORA_STRIP_CAPTIONS=true` sets the default for generations created without a stored preference. If you change the default after images are already mirrored, run `php artisan lumora:strip-image-captions` to clean the existing files.
 
@@ -154,7 +156,7 @@ If your Pixelforge account exposes these test words only in a specific test envi
 ## Testing
 
 ```bash
-php artisan test          # 55 unit + feature tests
+php artisan test          # full unit + feature suite
 vendor/bin/pint --test    # code style
 npm run build             # frontend production build
 ```
@@ -197,6 +199,31 @@ Lumora needs a standard PHP host with a persistent database and a queue worker. 
    - Add the domain to Google Search Console and submit the sitemap.
    - Private pages (`/dashboard`, `/generate`, `/creations`, `/billing`, `/settings`, `/admin`) are disallowed in `robots.txt` and served with `noindex`.
 7. **Smoke test**: register, confirm the welcome bonus, buy a package, run a render, verify the webhook settles it, check the admin dashboard, open the operator report, sync provider usage for the range and download each export.
+
+### Image storage
+
+A render has to outlive the host that produced it: provider URLs expire after 24 hours, and container filesystems are replaced on every deploy (Render's free plan also rebuilds on restart and spin-down). Lumora has two storage drivers, selected with `LUMORA_IMAGE_STORE`:
+
+- **`database`** (default when `APP_ENV=production`): the bytes are kept in the `generation_images` table and served from `/media/generations/{uuid}`. Images survive redeploys and restarts with no extra infrastructure. Files are capped at `LUMORA_IMAGE_DATABASE_MAX_BYTES` (8 MB by default) to stay well inside database packet limits.
+- **`disk`** (default locally): files go to `storage/app/public/generations` on `LUMORA_IMAGE_DISK`. Fast and cheap, but only durable when the filesystem is. Use it when you can mount a persistent disk, or point the disk at S3 (`LUMORA_IMAGE_DISK=s3` plus the usual `AWS_*` variables and `league/flysystem-aws-s3-v3`).
+
+Run `php artisan storage:link` for the disk driver. With Render's free plan, keep the default database driver — the free plan cannot attach a disk, and the container is rebuilt on every deploy and after periods of inactivity.
+
+Switching drivers only affects new writes; existing renders keep whatever URL they already have. Set the same driver on every instance so all workers agree where images belong.
+
+Admins can audit and repair storage at **Admin → Image Storage** (`/admin/images`). It lists every completed render whose image is unavailable and can:
+
+- upload recovered images named after the generation UUID (for example `258a328b-9697-452e-a08b-33b99a9f5ce4.png`),
+- re-download a recent render from its stored Pixelforge URL (provider links expire after 24 hours).
+
+The same operations are available from the CLI:
+
+```bash
+php artisan lumora:verify-images                       # list missing images (--json for scripts)
+php artisan lumora:restore-images /path/to/recovered   # restore <uuid>.png files from a folder
+```
+
+If a redeploy already wiped the files, download the images you still have before they are overwritten again, restore them through either path above, and switch to the database driver (or a persistent disk) so it does not recur.
 
 ### Deployment status
 

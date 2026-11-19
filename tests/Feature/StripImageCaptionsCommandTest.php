@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Generation;
+use App\Services\Images\GenerationImageStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
@@ -104,6 +105,35 @@ class StripImageCaptionsCommandTest extends TestCase
             ->assertSuccessful();
 
         $this->assertSame($captioned, Storage::disk('public')->get($path));
+    }
+
+    #[Test]
+    public function images_stored_in_the_database_are_cleaned_up(): void
+    {
+        config(['lumora.generation.image_store' => 'database']);
+
+        $generation = Generation::factory()->create([
+            'status' => Generation::STATUS_SUCCEEDED,
+            'meta' => ['remove_captions' => true],
+        ]);
+
+        $store = app(GenerationImageStore::class);
+        $store->store($generation, $this->captionedImage(), 'png');
+
+        $this->artisan('lumora:strip-image-captions')
+            ->expectsOutputToContain('Stripped captions from 1 image(s)')
+            ->assertSuccessful();
+
+        $cleaned = $store->contents($generation->fresh());
+        $this->assertNotNull($cleaned);
+
+        $image = imagecreatefromstring($cleaned);
+        $color = imagecolorat($image, 21, 90);
+        $brightness = min(($color >> 16) & 0xFF, ($color >> 8) & 0xFF, $color & 0xFF);
+
+        $this->assertLessThan(140, $brightness);
+        $this->assertNotNull($generation->fresh()->meta['captions_stripped_at']);
+        $this->get('/media/generations/'.$generation->uuid)->assertOk();
     }
 
     private function captionedImage(): string

@@ -102,6 +102,11 @@ class Generation extends Model
         return $this->hasOne(CreditTransaction::class)->where('type', CreditTransaction::TYPE_SETTLEMENT);
     }
 
+    public function image(): HasOne
+    {
+        return $this->hasOne(GenerationImage::class);
+    }
+
     public function scopeOwnedBy(Builder $query, User $user): Builder
     {
         return $query->where('user_id', $user->id);

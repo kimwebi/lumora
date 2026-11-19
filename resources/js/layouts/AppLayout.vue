@@ -4,6 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     CreditCard,
     FileText,
+    HardDrive,
     Home,
     Images,
     LayoutDashboard,
@@ -46,6 +47,7 @@ const navItems = computed(() => {
     if (user.value?.is_admin) {
         items.push({ label: 'Admin Dashboard', href: routes.admin, icon: ShieldCheck, match: 'admin' });
         items.push({ label: 'Operator Report', href: routes.adminReports, icon: FileText, match: 'admin/reports' });
+        items.push({ label: 'Image Storage', href: routes.adminImages, icon: HardDrive, match: 'admin/images' });
     }
 
     return items;

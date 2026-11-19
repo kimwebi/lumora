@@ -50,6 +50,10 @@ RUN apt-get update && apt-get install -y \
 # Enable Apache modules required by Laravel
 RUN a2enmod rewrite headers
 
+# Allow admin image restores to upload larger recovered files
+RUN printf 'upload_max_filesize = 20M\npost_max_size = 64M\nmemory_limit = 256M\nmax_execution_time = 120\n' \
+    > /usr/local/etc/php/conf.d/zz-lumora.ini
+
 # Configure Apache to serve Laravel's public directory on port 10000
 RUN printf 'Listen 10000\n' > /etc/apache2/ports.conf \
     && printf '%s\n' \

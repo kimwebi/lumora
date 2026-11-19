@@ -1,4 +1,3 @@
-
 #!/bin/sh
 
 set -e
@@ -14,6 +13,9 @@ php artisan migrate --force
 echo "Creating admin account if needed..."
 php artisan db:seed --class=AdminUserSeeder --force
 
+echo "Preparing storage directories..."
+mkdir -p storage/app/public/generations storage/framework/cache storage/framework/sessions storage/framework/views storage/logs
+
 echo "Creating storage link..."
 php artisan storage:link || true
 
@@ -24,6 +26,10 @@ php artisan queue:work \
     --tries=3 \
     --timeout=120 \
     --max-time=3600 &
+
+echo "Starting task scheduler..."
+
+php artisan schedule:work &
 
 echo "Starting Apache..."
 exec apache2-foreground

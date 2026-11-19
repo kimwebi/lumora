@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\MirrorGenerationImage;
 use App\Models\Generation;
 use App\Services\Generations\ImageCaptionStripper;
+use App\Services\Images\GenerationImageStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -181,7 +182,10 @@ class ImageMirrorTest extends TestCase
 
     private function mirror(Generation $generation): void
     {
-        (new MirrorGenerationImage($generation->id))->handle(app(ImageCaptionStripper::class));
+        (new MirrorGenerationImage($generation->id))->handle(
+            app(ImageCaptionStripper::class),
+            app(GenerationImageStore::class),
+        );
     }
 
     private function captionedImage(): string

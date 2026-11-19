@@ -4,20 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\Generation;
 use App\Models\User;
+use App\Services\Images\GenerationImageStore;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class LandingController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, GenerationImageStore $images): Response
     {
         $showcase = Generation::query()
             ->where('status', Generation::STATUS_SUCCEEDED)
             ->whereNotNull('image_url')
             ->latest()
-            ->limit(6)
-            ->get(['uuid', 'prompt', 'image_url', 'size', 'quality', 'created_at'])
+            ->limit(24)
+            ->get(['id', 'uuid', 'prompt', 'image_url', 'size', 'quality', 'status', 'created_at', 'meta'])
+            ->filter(fn (Generation $generation) => $images->exists($generation))
+            ->take(6)
+            ->values()
             ->map(fn (Generation $generation) => [
                 'uuid' => $generation->uuid,
                 'prompt' => $generation->prompt,

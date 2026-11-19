@@ -11,6 +11,11 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+# Never bake local render files or a local SQLite database into the image
+storage/app/public/*
+storage/app/private/*
+database/*.sqlite
+database/*.sqlite-journal
 .phpunit.cache
 .idea
 .vscode

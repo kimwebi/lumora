@@ -28,6 +28,11 @@ return [
         'name' => env('LUMORA_ADMIN_NAME', 'Ava Lumora'),
         'email' => env('LUMORA_ADMIN_EMAIL', 'admin@lumora.com'),
         'password' => env('LUMORA_ADMIN_PASSWORD', 'password'),
+
+        // The seeder runs on every deploy. Leave this false so changing the
+        // password in the app is not undone by the next restart; set it to
+        // true once if you need to force the configured password back.
+        'reset_password' => (bool) env('LUMORA_ADMIN_RESET_PASSWORD', false),
     ],
 
     /*
@@ -113,10 +118,21 @@ return [
         'default_quality' => 'medium',
 
         // Provider image URLs expire 24 hours after completion, so finished
-        // renders are copied onto our own disk.
+        // renders are copied onto storage we control.
         'mirror_images' => (bool) env('LUMORA_MIRROR_IMAGES', true),
+
+        // "disk" writes files to LUMORA_IMAGE_DISK and serves them through
+        // /storage. "database" keeps the bytes in the generation_images table
+        // and serves them from /media/generations, which survives container
+        // rebuilds on hosts without a persistent disk. Production defaults to
+        // the durable option.
+        'image_store' => env(
+            'LUMORA_IMAGE_STORE',
+            env('APP_ENV', 'production') === 'production' ? 'database' : 'disk',
+        ),
         'image_disk' => env('LUMORA_IMAGE_DISK', 'public'),
         'image_max_bytes' => 15 * 1024 * 1024,
+        'image_database_max_bytes' => (int) env('LUMORA_IMAGE_DATABASE_MAX_BYTES', 8 * 1024 * 1024),
 
         // Pixelforge draws the prompt, generation id and quality onto every
         // placeholder render. Those captions are kept by default; set
