@@ -83,42 +83,21 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 use Illuminate\Support\Facades\Storage;
 use App\Models\Generation;
 
-
-Route::get('/admin/storage-check', function () {
-    abort_unless(auth()->check() && auth()->user()->is_admin, 403);
-
+Route::get('/lumora-diagnostic', function () {
     return response()->json([
-        'database_connection' => config('database.default'),
-        'database_driver' => config('database.connections.'.config('database.default').'.driver'),
 
-        'database_name' => \Illuminate\Support\Facades\DB::connection()->getDatabaseName(),
+        // Keep your existing diagnostic information here.
 
-        'logged_in_user' => [
-            'id' => auth()->id(),
-            'email' => auth()->user()->email,
-        ],
-
-        'generation_counts' => [
-            'all_records' => \App\Models\Generation::withTrashed()->count(),
-            'active_records' => \App\Models\Generation::count(),
-            'soft_deleted_records' => \App\Models\Generation::onlyTrashed()->count(),
-        ],
-
-        'generations_by_user' => \App\Models\Generation::withTrashed()
-            ->selectRaw('user_id, COUNT(*) as total')
-            ->groupBy('user_id')
-            ->get(),
-
-        'recent_generations' => \App\Models\Generation::withTrashed()
-            ->latest()
-            ->take(10)
-            ->get([
-                'uuid',
-                'user_id',
-                'status',
-                'image_url',
-                'thumbnail_url',
-                'deleted_at',
+        'generations' => \App\Models\Generation::withTrashed()
+            ->where('status', 'succeeded')
+            ->get()
+            ->map(fn ($generation) => [
+                'uuid' => $generation->uuid,
+                'provider_generation_id' => $generation->provider_generation_id,
+                'image_url' => $generation->image_url,
+                'provider_image_url' => $generation->meta['provider_image_url'] ?? null,
+                'image_mirrored_at' => $generation->meta['image_mirrored_at'] ?? null,
             ]),
+
     ]);
 })->middleware('auth');
